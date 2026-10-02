@@ -1,0 +1,11 @@
+# /etc/systemd/system/kotak-scheduler.timer
+# Runs the Laravel scheduler every minute (in place of a cron entry).
+[Unit]
+Description=Run the Kotak scheduler every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,14 @@
+# /etc/systemd/system/kotak-scheduler.service
+# One scheduler tick, started every minute by kotak-scheduler.timer.
+# See docs/deploy-aws-ec2.md.
+[Unit]
+Description=Kotak scheduler tick
+After=network-online.target mysqld.service
+
+[Service]
+Type=oneshot
+User=apache
+Group=apache
+UMask=0002
+WorkingDirectory=/var/www/kotak/kotak-parcel-backend
+ExecStart=/usr/bin/php artisan schedule:run --no-interaction

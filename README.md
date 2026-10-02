@@ -1,0 +1,360 @@
+# Kotak: backend
+
+Parcel delivery for Malaysia. Customers book a delivery online and drop the
+parcel off at a branch, where it is weighed and paid for. An admin then
+schedules a driver, and everyone can follow the parcel with its tracking
+number.
+
+This repository is the **Laravel 13 backend**: the database, business rules,
+authorisation, notifications and tests. The Vue 3 pages live in
+[kotak-parcel-frontend](https://github.com/karchung0930/kotak-parcel-frontend).
+The two deploy as one site, because Inertia renders the Vue pages from
+Laravel, so check both out side by side.
+
+**Live demo: <https://dataflows.karchung.dev>** (sign-in details below).
+
+- [Try it: DEMO_ACCOUNTS and tracking numbers](#demo_accounts)
+- [What it is](#what-it-is)
+- [Stack](#stack)
+- [How the two repositories fit together](#how-the-two-repositories-fit-together)
+- [Architecture](#architecture)
+- [Security](#security)
+- [Running it locally](#running-it-locally)
+- [Deployment](#deployment)
+- [What I'd add next](#what-id-add-next)
+
+## DEMO_ACCOUNTS
+
+Sign in at <https://dataflows.karchung.dev/login>. Every account uses the
+password **`password`**. Each role only sees its own screens:
+
+- **Customer**: send a parcel, follow your parcels.
+- **Staff**: the drop-off counter at their branch (weigh, confirm the price,
+  take payment, print the receipt).
+- **Admin**: Dispatch (assign a driver and a date), all orders, users and
+  branches.
+- **Driver**: today's jobs, pick up, deliver with a photo or report a failed
+  delivery.
+
+Tracking needs no account: open <https://dataflows.karchung.dev/track> and
+enter any number below.
+
+| Role     | Email                        | Notes                                |
+| -------- | ---------------------------- | ------------------------------------ |
+| Admin    | `admin@kotak.test`           | Dispatch, orders, users and branches |
+| Staff    | `staff.pj@kotak.test`        | Counter at Petaling Jaya - SS2       |
+| Staff    | `staff2.pj@kotak.test`       | Counter at Petaling Jaya - SS2       |
+| Staff    | `staff.bangsar@kotak.test`   | Counter at Bangsar South             |
+| Staff    | `staff.midvalley@kotak.test` | Counter at Mid Valley                |
+| Staff    | `staff.subang@kotak.test`    | Counter at Subang Jaya - SS15        |
+| Staff    | `staff.cheras@kotak.test`    | Counter at Cheras - Taman Connaught  |
+| Staff    | `staff.shahalam@kotak.test`  | Counter at Shah Alam - Seksyen 13    |
+| Driver   | `driver.ravi@kotak.test`     | Ravi Kumar, WXA 1234                 |
+| Driver   | `driver.faizal@kotak.test`   | Ahmad Faizal, BKM 5521               |
+| Driver   | `driver.wong@kotak.test`     | Wong Kah Wai, VFD 8812               |
+| Driver   | `driver.siti@kotak.test`     | Siti Nora, WTT 3390                  |
+| Customer | `aisyah@kotak.test`          | Aisyah Rahman, sender of the sample  |
+| Customer | `jason@kotak.test`           | Jason Tan                            |
+| Customer | `priya@kotak.test`           | Priya Nair                           |
+
+The demo data also has six Klang Valley branches and 21 orders in every
+status. Try tracking the sample parcel **`KT-7Q4M92XD`**: a 4.2 kg ceramic
+dinner set from Aisyah Rahman to Daniel Lim in Taman Tun Dr Ismail, out for
+delivery today.
+
+| Status             | Tracking numbers                                     | Try it as                                            |
+| ------------------ | ---------------------------------------------------- | ---------------------------------------------------- |
+| Created            | `KT-00000002`, `KT-00000007`, `KT-00000014`           | Staff: drop it off at the counter                     |
+| Dropped Off        | `KT-00000008`, `KT-00000015`                         | Staff (Cheras, Bangsar): take payment                 |
+| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`           | Admin: assign a driver in Dispatch                    |
+| Assigned           | `KT-00000010` (Siti), `KT-00000017`, `KT-00000018` (Ravi) | Driver: pick up                                  |
+| Picked Up          | `KT-7Q4M92XD` (Ravi), `KT-00000013` (Faizal)          | Driver: deliver or record a failure                   |
+| Delivered          | `KT-00000003`, `KT-00000011`, `KT-00000019`           | Anyone: tracking page with proof of delivery          |
+| Delivery Failed    | `KT-00000005`, `KT-00000020`                         | Admin: reassign or return to sender                   |
+| Returned to Sender | `KT-00000012`                                        |                                                      |
+| Cancelled          | `KT-00000006`, `KT-00000021`                         |                                                      |
+
+## What it is
+
+Kotak is a working build of the development test's use case scenario #3: an
+online parcel delivery system with four roles.
+
+1. A **customer** creates an order online.
+2. **Branch staff** weigh the parcel at the counter and take payment.
+3. An **admin** assigns a truck driver and a delivery date.
+4. The **driver** picks the parcel up and delivers it.
+5. The customer can track the parcel at any time and gets an email when its
+   status changes.
+
+The scenario was drawn as six microservices. Here they are modules of one
+Laravel application, with the same boundaries (see
+[Architecture](#architecture)).
+
+### How each requirement maps to the app
+
+| Requirement                                                                                | Where                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Register and log in; each role only reaches its own screens                                | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                          |
+| Create an order: delivery address, item name, weight and dimensions                        | **Send a parcel** (`orders/Create`) → `CreateOrder`                                                                                                                                                                                 |
+| Show an estimated price, a tracking number and the nearest branch                          | Live estimate from `PriceCalculator` (mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                                                                             |
+| Drop off at a branch; staff weigh it and set the final price                               | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_                                                                                                                                         |
+| Pay at the counter by cash or card, with a receipt                                         | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                  |
+| Cancel an order, only before it is paid                                                    | Customer and counter cancel buttons → `CancelOrder`. Orders that are never dropped off are cancelled after 14 days by `orders:expire-unclaimed`                                                                                     |
+| Admin assigns a paid order to a driver and schedules the delivery day                      | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_                                                                                                                                                                       |
+| Driver picks up and delivers, with proof of delivery                                       | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                            |
+| Driver reports a failed delivery; admin reschedules it                                     | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (`config/kotak.php`) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier |
+| Track a parcel by its tracking number                                                      | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                      |
+| Notify the customer when the status changes                                                | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email                                                                                                                                      |
+| Beyond the brief: pricing and branch pages, admin order search, user and branch management | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`                                                                                                                                                  |
+
+**Pricing** (`config/kotak.php`): RM 8.00 for the first kg, then RM 2.00 for
+each further kg, rounded up. The chargeable weight is the greater of:
+
+- the actual weight
+- the volumetric weight: length × width × height (cm) ÷ 5000
+
+A parcel can weigh up to 30 kg, with each side up to 150 cm. Money is stored
+as integer sen and weight as grams.
+
+## Stack
+
+- **Backend**: PHP 8.3+, Laravel 13, Laravel Fortify (login, registration,
+  email verification, two-factor codes, passkeys), Inertia 3.
+- **Database**: SQLite for local development and tests. MySQL 8.4 in
+  production.
+- **Frontend**: Vue 3.5 `<script setup>` with TypeScript and Tailwind CSS 4.
+  UI components are shadcn-vue on reka-ui, with lucide icons.
+- **Routing**: Wayfinder generates typed route and form helpers, so no URL is
+  hard-coded in the frontend.
+- **Tooling**: Pint and PHPStan here; Vite (through vite-plus, which also
+  lints and formats) and vue-tsc in the frontend repository.
+
+## How the two repositories fit together
+
+```text
+kotak-parcel-backend/          this repository
+  app/ config/ database/ routes/ tests/
+  resources/views/app.blade.php  the one HTML shell; @vite loads the build
+  public/build/                  written by the frontend build (not committed)
+kotak-parcel-frontend/         the Vue pages, next to this folder
+  resources/js/ resources/css/
+```
+
+- **Pages.** A controller returns `Inertia::render('orders/Show', [...])`.
+  The page component lives in the frontend at
+  `resources/js/pages/orders/Show.vue`. Every feature test checks that the
+  component it expects exists there (`config/inertia.php` points at
+  `../kotak-parcel-frontend`; set `FRONTEND_PATH` if yours is elsewhere).
+- **Assets.** The frontend's `npm run build` writes the compiled files and
+  `manifest.json` into this repository's `public/build`, and
+  `app.blade.php` loads them with `@vite`. `npm run dev` writes `public/hot`
+  instead, so Laravel loads the Vite dev server.
+- **Routes.** The frontend build runs `php artisan wayfinder:generate` here
+  and writes typed route helpers into the frontend, so no URL is hard-coded
+  in Vue and a renamed route becomes a type error.
+
+## Architecture
+
+### A modular monolith
+
+The scenario's six services are six modules in one codebase with one
+database. A small courier doesn't need network calls, a message broker and six
+databases to run this. The module boundaries are kept, so a busy module (most
+likely Tracking) can be split out later.
+
+| Module       | Backend                                                                                                                  | Screens                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
+| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`         | auth, settings, admin users                 |
+| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `PriceCalculator`, `TrackingNumber`, `OrderPolicy`     | Send a parcel, My parcels, counter weighing |
+| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                             | counter payment, receipt                    |
+| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController` | Dispatch, My jobs                           |
+| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                       | Track                                       |
+| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`                                                | email                                       |
+| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                     | Branches, admin branches                    |
+
+- **Controllers stay thin.** Each business step is a single-purpose action
+  class (`app/Actions/*`). Controllers authorise, validate through a Form
+  Request, call the action, and return an Inertia page built from API
+  Resources. The plain admin user and branch forms save directly.
+- **Resources control the output.** Every page receives exactly the fields in
+  its Resource, typed in `resources/js/types/domain.ts`.
+
+### One status writer
+
+`App\Services\OrderStatusService` is the only code that changes
+`orders.status`. For every change it:
+
+1. Re-reads the order under a row lock (`freshLocked()`), so two requests
+   cannot both pass the same check.
+2. Checks the move against `OrderStatus::allowedNext()`, and throws
+   `InvalidStatusTransition` otherwise.
+3. Sets the matching timestamp (`dropped_off_at`, `paid_at`, …).
+4. Appends a row to `order_status_events` with the actor and branch. The
+   model refuses updates and deletes, so the history cannot be rewritten.
+5. Dispatches `OrderStatusChanged`.
+
+The allowed moves are:
+
+| From            | To                                                                 |
+| --------------- | ------------------------------------------------------------------ |
+| created         | dropped_off, cancelled                                             |
+| dropped_off     | paid, cancelled                                                    |
+| paid            | assigned                                                           |
+| assigned        | assigned (reassign or reschedule), picked_up                       |
+| picked_up       | delivered, delivery_failed                                         |
+| delivery_failed | assigned (reschedule, under the attempt limit), returned_to_sender |
+
+`delivered`, `returned_to_sender` and `cancelled` are final. A parcel can only
+be cancelled before it is paid, so no refund is ever needed.
+
+### Events after commit, notifications on the queue
+
+- `OrderStatusChanged` implements `ShouldDispatchAfterCommit`. Listeners only
+  hear about a change once its transaction has committed, never about one
+  that rolled back.
+- `SendOrderStatusNotification` is a queued listener, retried 3 times with a
+  60-second backoff. A slow or broken mail server never slows down or fails
+  the counter, dispatch or driver screens.
+- It only writes to customers with a verified email address. It skips driver
+  swaps that don't change the delivery day.
+
+### Frontend
+
+The pages, layouts and components are described in the
+[frontend README](https://github.com/karchung0930/kotak-parcel-frontend#readme).
+In short: one folder of pages per area, the layout picked from the page name,
+shared components for everything repeated, and formatting helpers that keep
+money, weights and dates (Asia/Kuala_Lumpur) consistent. It is mobile first
+and checked from 320 px phones through tablets to 1440 px desktops.
+
+## Security
+
+**Accounts**
+
+- Logins are throttled to 5 a minute per email and IP address.
+- Customers must verify their email address.
+- Two-factor codes (with recovery codes) and passkeys are available. The
+  security settings page asks for the password again.
+- In production, passwords must be at least 12 characters, with mixed case,
+  numbers and symbols, and must not appear in known breaches.
+- Sign-up only ever creates customers. Admins create staff, driver and admin
+  accounts.
+- Accounts and branches are deactivated, never deleted. A deactivated user
+  is signed out on their next request.
+
+**Authorisation**
+
+Three layers protect every route:
+
+1. Role middleware on each route file.
+2. A Policy for each record. Customers see only their own orders. Drivers see
+   only the active jobs assigned to them. Staff and admins work the counter.
+3. A Form Request that validates all input.
+
+Actions write only values they computed themselves, never raw request input.
+
+**Public tracking**
+
+- The tracking page shows the status, the destination city and postcode, the
+  branch and the history. It never shows names, phone numbers or addresses.
+- Lookups are throttled to 30 a minute per IP address.
+- Tracking numbers are 8 random Crockford base32 characters (32⁸ ≈ 1.1
+  trillion), so they are hard to guess.
+- Order creation is also throttled, to 10 a minute per customer.
+
+**Payments**
+
+- The amount must equal the final price set at weighing.
+- The database allows one payment per order and unique receipt numbers.
+- Card payments keep only the terminal's approval code (4 to 12 letters and
+  digits), never a card number.
+
+**Proof-of-delivery photos**
+
+- Photos must be JPEG, PNG or WebP images of at most 5 MB.
+- They are stored under random names on the private disk
+  (`storage/app/private`).
+- They are only served through `orders.proof`, which checks
+  `OrderPolicy::viewProof`.
+
+**Browser**
+
+- Every response sends `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+  `Referrer-Policy` and a `Permissions-Policy` (camera and microphone off,
+  geolocation for this site only). HSTS is added over HTTPS.
+- CSRF protection comes from Laravel sessions.
+- The frontend never renders server data with `v-html`.
+- Only a small view of the signed-in user is shared with pages.
+- "Use my location" works out distances in the browser, so the visitor's
+  position never reaches the server.
+
+**Operations**
+
+- Outside local development, errors show a branded error page with no stack
+  trace.
+- Destructive database commands are blocked in production, and the demo
+  seeder refuses to run there.
+
+## Running it locally
+
+[docs/local-development.md](docs/local-development.md) covers running the
+site on your own machine, the demo data and the tests.
+
+## Deployment
+
+The live demo runs exactly this setup.
+[docs/deploy-aws-ec2.md](docs/deploy-aws-ec2.md) walks through putting the
+site on one AWS EC2 instance running Amazon Linux 2023 on Graviton (arm64):
+nginx, PHP-FPM 8.4, MySQL 8.4 LTS on the instance, a systemd queue worker and
+scheduler timer, CloudFront in front, and Amazon SES for email. The nginx
+config, systemd units, the one-shot [`install.sh`](deploy/install.sh) and the
+update script are in [`deploy/`](deploy).
+
+- **Environment**: `APP_ENV=production`, `APP_DEBUG=false`, an `https://`
+  `APP_URL` and a fresh `APP_KEY`.
+- **Deploy steps** (what [`deploy/deploy.sh`](deploy/deploy.sh) runs):
+    1. `composer install --no-dev --optimize-autoloader`
+    2. `php artisan route:clear`, so the frontend build sees the current routes
+    3. In the frontend: `npm ci && npm run build`
+    4. `php artisan migrate --force`
+    5. `php artisan optimize` and `php artisan queue:restart`
+- **Seeding.** The demo seeder throws when `APP_ENV=production`. The live
+  demo is a short-lived showcase, so [`deploy/install.sh`](deploy/install.sh)
+  seeds it once with `--env=staging`. A real installation skips the seeder and
+  creates its first admin with `php artisan kotak:create-admin`.
+- **Database**: MySQL 8.4 LTS (`DB_CONNECTION=mysql`) or MariaDB 10.11
+  (`DB_CONNECTION=mariadb`), utf8mb4. Everything is stored in UTC, and
+  `config/kotak.php` sets the business time zone (Asia/Kuala_Lumpur) for
+  "today" and the schedule.
+- **HTTPS**: serve only over HTTPS and set `SESSION_SECURE_COOKIE=true`. HSTS
+  is sent automatically on secure requests. Behind a load balancer, configure
+  the trusted proxies so Laravel sees HTTPS.
+- **Queue worker**: keep `php artisan queue:work --tries=3` running under
+  Supervisor or systemd. Run `php artisan queue:restart` on each deploy. The
+  `database` queue is fine to start with; Redis is the step up.
+- **Scheduler**: run `php artisan schedule:run` every minute (a systemd timer
+  in [`deploy/systemd`](deploy/systemd), or cron). It cancels unclaimed
+  orders at midnight Malaysia time.
+- **Private storage**: proof-of-delivery photos live in `storage/app/private`,
+  outside the web root. Back it up with the database. With more than one web
+  server, move the photos to a private S3-compatible bucket; only the disk
+  name in `RecordDeliverySuccess` and `ProofOfDeliveryController` changes.
+- **Mail**: set a real mailer, for example Amazon SES through
+  `MAIL_MAILER=smtp` (no extra package), and `MAIL_FROM_ADDRESS` on a domain
+  with SPF and DKIM set up. Status emails only go out while the queue worker
+  runs.
+
+## What I'd add next
+
+- **SMS or WhatsApp updates**: the scenario asked for email or SMS, and a
+  second notification channel on the same queued listener is a small step.
+- **Online payment** (FPX or card) at booking, so the counter only weighs and
+  settles any difference.
+- **Printed parcel labels and phone-camera scanning.** The customer's counter
+  pass already shows a Code 39 barcode that a USB scanner types into the
+  counter search.
+- **Browser end-to-end tests** (Playwright) and automated accessibility
+  checks (axe) for the main customer, counter, dispatch and driver flows.
+- **Admin audit log** for user, branch and dispatch changes.
+- **Split out Tracking** as its own read-only service and database if public
+  lookups ever outgrow the main app.

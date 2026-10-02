@@ -1,0 +1,48 @@
+name: tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout backend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: kotak-parcel-backend
+          persist-credentials: false
+
+      # The feature tests check that every page they render exists in the
+      # frontend repository, which sits next to this one.
+      - name: Checkout frontend
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: karchung0930/kotak-parcel-frontend
+          path: kotak-parcel-frontend
+          persist-credentials: false
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install
+        working-directory: kotak-parcel-backend
+        run: |
+          composer install --no-interaction --prefer-dist
+          cp .env.example .env
+          php artisan key:generate
+
+      - name: Style, static analysis and tests
+        working-directory: kotak-parcel-backend
+        run: composer test
