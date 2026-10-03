@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Customer;
 
+use App\Actions\Settings\UpdateSettings;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
@@ -86,6 +88,40 @@ class ViewOrderTest extends TestCase
             ->get(route('admin.orders.show', $order))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('order.delivery_attempts.0.note', 'Internal: guard says the tenant owes rent.'));
+    }
+
+    public function test_orders_waiting_for_drop_off_show_the_deadline_worked_out_by_the_server()
+    {
+        // Ordered at 23:30 on 3 October in Kuala Lumpur (15:30 UTC): 7 days later is 10 October there.
+        $order = Order::factory()->create(['created_at' => CarbonImmutable::parse('2026-10-03 15:30:00', 'UTC')]);
+
+        $this->actingAs($order->customer)
+            ->get(route('orders.show', $order))
+            ->assertInertia(fn (Assert $page) => $page->where('order.drop_off_deadline', '2026-10-10'));
+
+        $this->actingAs($order->customer)
+            ->get(route('orders.index'))
+            ->assertInertia(fn (Assert $page) => $page->where('orders.data.0.drop_off_deadline', '2026-10-10'));
+    }
+
+    public function test_the_deadline_a_customer_was_given_stays_when_the_limit_changes()
+    {
+        $order = Order::factory()->create(['created_at' => CarbonImmutable::parse('2026-10-03 15:30:00', 'UTC')]);
+
+        app(UpdateSettings::class)->handle(User::factory()->admin()->create(), ['unclaimed_order_days' => 3, 'drop_off_reminder_days_before' => 1]);
+
+        $this->actingAs($order->customer)
+            ->get(route('orders.show', $order))
+            ->assertInertia(fn (Assert $page) => $page->where('order.drop_off_deadline', '2026-10-10'));
+    }
+
+    public function test_there_is_no_deadline_once_the_parcel_is_dropped_off()
+    {
+        $order = Order::factory()->droppedOff()->create();
+
+        $this->actingAs($order->customer)
+            ->get(route('orders.show', $order))
+            ->assertInertia(fn (Assert $page) => $page->where('order.drop_off_deadline', null));
     }
 
     public function test_orders_cannot_be_cancelled_once_dropped_off()

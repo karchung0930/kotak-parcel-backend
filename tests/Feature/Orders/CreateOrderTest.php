@@ -3,10 +3,12 @@
 namespace Tests\Feature\Orders;
 
 use App\Actions\Orders\CreateOrder;
+use App\Actions\Settings\UpdateSettings;
 use App\Enums\MalaysianState;
 use App\Enums\OrderStatus;
 use App\Models\Branch;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -59,6 +61,24 @@ class CreateOrderTest extends TestCase
         $this->assertNull($event->from_status);
         $this->assertSame(OrderStatus::Created, $event->to_status);
         $this->assertSame($customer->id, $event->actor_id);
+    }
+
+    public function test_the_drop_off_deadline_is_fixed_from_the_malaysian_order_day_and_the_current_limit()
+    {
+        $customer = User::factory()->create(['phone' => '+60123456789']);
+        $branch = Branch::factory()->create();
+
+        // 23:30 on 3 October in Kuala Lumpur (15:30 UTC), with 10 days to drop off.
+        $this->travelTo(CarbonImmutable::parse('2026-10-03 15:30:00', 'UTC'));
+        app(UpdateSettings::class)->handle(User::factory()->admin()->create(), ['unclaimed_order_days' => 10]);
+
+        $order = app(CreateOrder::class)->handle($customer, $this->input($branch));
+
+        $this->assertSame('2026-10-13', $order->fresh()?->dropOffDeadline()?->toDateString());
+
+        // Input cannot set it.
+        $order = app(CreateOrder::class)->handle($customer, [...$this->input($branch), 'drop_off_deadline' => '2030-01-01']);
+        $this->assertSame('2026-10-13', $order->fresh()?->dropOffDeadline()?->toDateString());
     }
 
     public function test_system_fields_cannot_be_mass_assigned_from_input()

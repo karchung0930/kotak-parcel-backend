@@ -272,7 +272,10 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost/up
 
 ## 10. Queue worker and scheduler
 
-Install and start the worker (status emails) and the scheduler timer:
+Install and start the worker (status and reminder emails) and the scheduler
+timer. The timer runs `php artisan schedule:run` every minute, which sends
+the drop-off reminders at 9:00 and cancels unclaimed orders at midnight,
+Malaysia time:
 
 ```sh
 sudo cp $BACKEND/deploy/systemd/kotak-* /etc/systemd/system/
@@ -415,6 +418,12 @@ Pull both repositories, install, build, migrate and restart:
 ```sh
 $BACKEND/deploy/deploy.sh
 ```
+
+The first update with site settings lowers the default drop-off limit from
+14 days to 7. Orders already waiting for drop-off keep the 14 days they were
+placed under: the migration stores each one's deadline, so the next midnight
+run cancels nothing early. Orders placed after the update get the limit set
+on **Site settings**.
 
 ## Logs
 

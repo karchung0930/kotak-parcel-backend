@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Http;
 
+use App\Actions\Settings\UpdateSettings;
 use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -46,5 +47,13 @@ class SharedPropsTest extends TestCase
 
         $this->get(route('pricing'))
             ->assertInertia(fn (Assert $page) => $page->where('maxFailedAttempts', 4));
+    }
+
+    public function test_the_delivery_attempt_limit_an_admin_saved_is_shared()
+    {
+        app(UpdateSettings::class)->handle(User::factory()->admin()->create(), ['max_failed_attempts' => 5]);
+
+        $this->get(route('pricing'))
+            ->assertInertia(fn (Assert $page) => $page->where('maxFailedAttempts', 5));
     }
 }

@@ -10,6 +10,7 @@ use App\Models\Payment;
 use App\Models\User;
 use App\Support\PriceCalculator;
 use App\Support\TrackingNumber;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -57,6 +58,10 @@ class OrderFactory extends Factory
             'height_cm' => $height,
             'chargeable_weight_g' => $chargeable,
             'estimated_price_sen' => $pricing->priceSen($chargeable),
+            // Fixed from the order time and the current limit, as CreateOrder does.
+            'drop_off_deadline' => fn (array $attributes) => Order::dropOffDeadlineFor(
+                CarbonImmutable::parse($attributes['created_at'] ?? now()),
+            )->toDateString(),
         ];
     }
 

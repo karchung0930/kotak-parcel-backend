@@ -11,6 +11,7 @@ use App\Http\Resources\UserResource;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\Settings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -66,7 +67,7 @@ class OrderController extends Controller
      * While the order can be (re)assigned, the page also gets the active
      * drivers with their workload on the chosen day, for the assign panel.
      */
-    public function show(Request $request, Order $order): Response
+    public function show(Request $request, Order $order, Settings $settings): Response
     {
         Gate::authorize('view', $order);
 
@@ -88,7 +89,7 @@ class OrderController extends Controller
 
         return Inertia::render('admin/orders/Show', [
             'order' => OrderResource::make($order),
-            'maxFailedAttempts' => config()->integer('kotak.max_failed_attempts'),
+            'maxFailedAttempts' => $settings->maxFailedAttempts(),
             'date' => $date->toDateString(),
             'today' => $today->toDateString(),
             'drivers' => fn () => $order->canBeAssigned()

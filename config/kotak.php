@@ -48,13 +48,19 @@ return [
     |
     | A parcel may be rescheduled after a failed delivery until it reaches
     | the maximum number of failed attempts, after which it must be returned
-    | to the sender. Orders that are never dropped off expire after a while.
+    | to the sender. Orders that are never dropped off expire after a while,
+    | and the customer is reminded a few days before (0 = no reminder).
+    |
+    | These are the defaults: admins change them on the Site settings page, and
+    | App\Support\Settings reads the saved values.
     |
     */
 
     'max_failed_attempts' => 3,
 
-    'unclaimed_order_days' => 14,
+    'unclaimed_order_days' => 7,
+
+    'drop_off_reminder_days_before' => 2,
 
     /*
     |--------------------------------------------------------------------------

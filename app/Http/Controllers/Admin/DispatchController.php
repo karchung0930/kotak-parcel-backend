@@ -12,6 +12,7 @@ use App\Http\Resources\OrderSummaryResource;
 use App\Http\Resources\UserResource;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -33,7 +34,7 @@ class DispatchController extends Controller
      * Each queue is paginated on its own. The props are closures so a
      * partial reload (e.g. only "drivers" for another day) runs only its own query.
      */
-    public function index(Request $request): Response
+    public function index(Request $request, Settings $settings): Response
     {
         $request->validate(['date' => ['nullable', 'date_format:Y-m-d']]);
 
@@ -84,7 +85,7 @@ class DispatchController extends Controller
                 ->withJobsCountOn($date)
                 ->orderBy('name')
                 ->get()),
-            'maxFailedAttempts' => config()->integer('kotak.max_failed_attempts'),
+            'maxFailedAttempts' => $settings->maxFailedAttempts(),
         ]);
     }
 

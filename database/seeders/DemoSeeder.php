@@ -9,6 +9,7 @@ use App\Actions\Delivery\RecordDeliverySuccess;
 use App\Actions\Delivery\ReturnToSender;
 use App\Actions\Orders\CancelOrder;
 use App\Actions\Orders\CreateOrder;
+use App\Actions\Orders\ExpireUnclaimedOrders;
 use App\Actions\Orders\RecordDropOff;
 use App\Actions\Payments\RecordPayment;
 use App\Enums\DeliveryFailureReason;
@@ -18,6 +19,7 @@ use App\Enums\PaymentMethod;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\Settings;
 use App\Support\TrackingNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
@@ -28,7 +30,7 @@ use RuntimeException;
 
 /**
  * Demo data for local development and assessment: branches, staff, drivers,
- * customers and ~20 orders in every status.
+ * customers and 24 orders in every status.
  *
  * Orders are driven through the real Actions (with the clock moved back in
  * time), so their history, payments and delivery attempts are consistent.
@@ -68,6 +70,7 @@ class DemoSeeder extends Seeder
         private RecordDeliverySuccess $recordDeliverySuccess,
         private RecordDeliveryFailure $recordDeliveryFailure,
         private ReturnToSender $returnToSender,
+        private ExpireUnclaimedOrders $expireUnclaimedOrders,
     ) {}
 
     /**
@@ -206,7 +209,8 @@ class DemoSeeder extends Seeder
         $counter = $this->staff[$scenario['branch']];
         $driver = $this->drivers[$scenario['driver'] ?? 'ravi'];
 
-        $this->travelTo($day, '10:00');
+        // Some customers order a few days before they bring the parcel in.
+        $this->travelTo($day + ($scenario['ordered_days_before'] ?? 0), '10:00');
         $order = $this->createOrder->handle($customer, [
             'branch_id' => $this->branches[$scenario['branch']]->id,
             ...$scenario['order'],
@@ -218,6 +222,14 @@ class DemoSeeder extends Seeder
         }
 
         if ($target === OrderStatus::Created) {
+            return;
+        }
+
+        if ($scenario['expired'] ?? false) {
+            // Never dropped off: the nightly job cancels it at midnight after the deadline day.
+            $this->travelTo($day - app(Settings::class)->unclaimedOrderDays() - 1, '00:00');
+            $this->expireUnclaimedOrders->handle();
+
             return;
         }
 
@@ -350,17 +362,17 @@ class DemoSeeder extends Seeder
                 'order' => $this->parcel('Nur Izzati Hassan', '+60172345601', 'Unit 18-3, Residensi Sentral', 'Jalan Tun Sambanthan', 'Kuala Lumpur', MalaysianState::KualaLumpur, '50470', 'Batik scarves', 600, 30, 20, 5),
             ],
             [
-                'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Delivered, 'days_ago' => 6,
+                'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Delivered, 'days_ago' => 6, 'ordered_days_before' => 2,
                 'driver' => 'faizal', 'payment' => PaymentMethod::Cash,
                 'order' => $this->parcel('Chong Wei Liang', '+60163456702', '8, Lorong Maarof', 'Bangsar Park', 'Kuala Lumpur', MalaysianState::KualaLumpur, '59000', 'Mechanical keyboard', 1500, 45, 16, 6),
             ],
             [
-                'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Paid, 'days_ago' => 1,
+                'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Paid, 'days_ago' => 1, 'ordered_days_before' => 1,
                 'payment' => PaymentMethod::Card,
                 'order' => $this->parcel('Rosli Ismail', '+60134567803', 'No. 5, Jalan Meru', 'Taman Meru', 'Klang', MalaysianState::Selangor, '41050', 'Rice cooker', 2800, 35, 35, 30),
             ],
             [
-                'customer' => 'aisyah', 'branch' => 'KL-BSR', 'status' => OrderStatus::DeliveryFailed, 'days_ago' => 4,
+                'customer' => 'aisyah', 'branch' => 'KL-BSR', 'status' => OrderStatus::DeliveryFailed, 'days_ago' => 4, 'ordered_days_before' => 3,
                 'driver' => 'wong', 'failures' => [DeliveryFailureReason::RecipientUnavailable],
                 'order' => $this->parcel('Faris Hakimi', '+60195678904', '22, Jalan Kenari 5', 'Bandar Puchong Jaya', 'Puchong', MalaysianState::Selangor, '47100', 'Office chair cushion', 1900, 45, 45, 12),
             ],
@@ -373,7 +385,7 @@ class DemoSeeder extends Seeder
                 'order' => $this->parcel('Amanda Lau', '+60126789005', '3, Jalan USJ 9/5Q', null, 'Subang Jaya', MalaysianState::Selangor, '47620', 'Board games', 2100, 40, 30, 10),
             ],
             [
-                'customer' => 'jason', 'branch' => 'KL-TCN', 'status' => OrderStatus::DroppedOff, 'days_ago' => 0,
+                'customer' => 'jason', 'branch' => 'KL-TCN', 'status' => OrderStatus::DroppedOff, 'days_ago' => 0, 'ordered_days_before' => 1,
                 'measured_weight_g' => 7550,
                 'order' => $this->parcel('Kumar Selvam', '+60137890106', '71, Jalan Sultan Iskandar', null, 'Ipoh', MalaysianState::Perak, '30000', 'Car parts', 7400, 50, 30, 20),
             ],
@@ -388,12 +400,12 @@ class DemoSeeder extends Seeder
                 'order' => $this->parcel('Sarah Abdullah', '+60179012308', 'C-12-5, Pangsapuri Seri Mas', 'Jalan Awan Hijau', 'Kuala Lumpur', MalaysianState::KualaLumpur, '58200', 'Laptop sleeve', 700, 40, 30, 4),
             ],
             [
-                'customer' => 'jason', 'branch' => 'KL-TCN', 'status' => OrderStatus::Delivered, 'days_ago' => 8,
+                'customer' => 'jason', 'branch' => 'KL-TCN', 'status' => OrderStatus::Delivered, 'days_ago' => 8, 'ordered_days_before' => 4,
                 'driver' => 'wong', 'payment' => PaymentMethod::Cash,
                 'order' => $this->parcel('Tan Ah Kow', '+60120123409', '9, Jalan Bunga Raya', null, 'Melaka', MalaysianState::Melaka, '75100', 'Pineapple tarts', 1600, 30, 25, 15),
             ],
             [
-                'customer' => 'jason', 'branch' => 'SA-S13', 'status' => OrderStatus::ReturnedToSender, 'days_ago' => 9,
+                'customer' => 'jason', 'branch' => 'SA-S13', 'status' => OrderStatus::ReturnedToSender, 'days_ago' => 9, 'ordered_days_before' => 2,
                 'driver' => 'faizal', 'payment' => PaymentMethod::Card,
                 'failures' => [DeliveryFailureReason::RecipientUnavailable, DeliveryFailureReason::NoAccess, DeliveryFailureReason::RecipientUnavailable],
                 'order' => $this->parcel('Brian Teo', '+60131234510', 'Lot 7, Jalan Lintas', 'Luyang', 'Kota Kinabalu', MalaysianState::Sabah, '88300', 'Hiking boots', 2300, 40, 30, 15),
@@ -412,7 +424,7 @@ class DemoSeeder extends Seeder
                 'order' => $this->parcel('Rajesh Nair', '+60124567813', '27, Jalan Dato Onn', null, 'Johor Bahru', MalaysianState::Johor, '80000', 'Brass lamp', 3600, 30, 30, 40),
             ],
             [
-                'customer' => 'priya', 'branch' => 'SA-S13', 'status' => OrderStatus::Paid, 'days_ago' => 2,
+                'customer' => 'priya', 'branch' => 'SA-S13', 'status' => OrderStatus::Paid, 'days_ago' => 2, 'ordered_days_before' => 1,
                 'payment' => PaymentMethod::Card,
                 'order' => $this->parcel('Aaron Wong', '+60165678914', '6, Jalan Galing', null, 'Kuantan', MalaysianState::Pahang, '25200', 'Camera tripod', 2600, 65, 15, 15),
             ],
@@ -427,12 +439,12 @@ class DemoSeeder extends Seeder
                 'order' => $this->parcel('Vincent Yeoh', '+60137890116', '2, Jalan 17/1', 'Seksyen 17', 'Petaling Jaya', MalaysianState::Selangor, '46400', 'Coffee grinder', 2400, 30, 20, 35),
             ],
             [
-                'customer' => 'priya', 'branch' => 'KL-MVC', 'status' => OrderStatus::Delivered, 'days_ago' => 5,
+                'customer' => 'priya', 'branch' => 'KL-MVC', 'status' => OrderStatus::Delivered, 'days_ago' => 5, 'ordered_days_before' => 2,
                 'driver' => 'siti', 'payment' => PaymentMethod::Cash,
                 'order' => $this->parcel('Ong Siew Mei', '+60182901217', '18, Persiaran Multimedia', null, 'Cyberjaya', MalaysianState::Selangor, '63000', 'Monitor stand', 5200, 60, 30, 15),
             ],
             [
-                'customer' => 'priya', 'branch' => 'PJ-SS2', 'status' => OrderStatus::DeliveryFailed, 'days_ago' => 10,
+                'customer' => 'priya', 'branch' => 'PJ-SS2', 'status' => OrderStatus::DeliveryFailed, 'days_ago' => 10, 'ordered_days_before' => 5,
                 'driver' => 'wong', 'payment' => PaymentMethod::Cash,
                 'failures' => [DeliveryFailureReason::RecipientUnavailable, DeliveryFailureReason::AddressNotFound, DeliveryFailureReason::RecipientUnavailable],
                 'order' => $this->parcel('Zulkifli Ahmad', '+60139012318', '3, Jalan Kampung Baru', null, 'Sungai Buloh', MalaysianState::Selangor, '47000', 'Cast iron cookware', 6800, 45, 35, 30),
@@ -442,6 +454,21 @@ class DemoSeeder extends Seeder
                 'customer' => 'priya', 'branch' => 'KL-TCN', 'status' => OrderStatus::Cancelled, 'days_ago' => 1,
                 'refused_price' => true,
                 'order' => $this->parcel('Stephanie Lee', '+60120123419', '9, Jalan Setia Nusantara', 'Setia Eco Park', 'Shah Alam', MalaysianState::Selangor, '40170', 'Floor lamp', 3000, 120, 30, 30),
+            ],
+            // Waiting for drop-off for 5 days: due the reminder, 2 days before the deadline (by default).
+            [
+                'customer' => 'jason', 'branch' => 'KL-BSR', 'status' => OrderStatus::Created, 'days_ago' => 5,
+                'order' => $this->parcel('Melissa Chan', '+60125566778', '21, Jalan Kenanga 3', 'Taman Kenanga', 'Seremban', MalaysianState::NegeriSembilan, '70200', 'Picture frames', 1800, 50, 40, 8),
+            ],
+            [
+                'customer' => 'priya', 'branch' => 'SJ-SS15', 'status' => OrderStatus::Created, 'days_ago' => 5,
+                'order' => $this->parcel('Harith Iskandar', '+60174455661', '5, Jalan Bukit Tinggi 2', 'Bukit Tinggi', 'Klang', MalaysianState::Selangor, '41200', 'School books', 3400, 35, 25, 20),
+            ],
+            // Never dropped off: cancelled automatically after its deadline.
+            [
+                'customer' => 'aisyah', 'branch' => 'KL-MVC', 'status' => OrderStatus::Cancelled, 'days_ago' => 12,
+                'expired' => true,
+                'order' => $this->parcel('Nurul Ain Zakaria', '+60193344552', '17, Jalan Wangsa 2/3', 'Wangsa Maju', 'Kuala Lumpur', MalaysianState::KualaLumpur, '53300', 'Wall clock', 1300, 35, 35, 8),
             ],
         ];
     }

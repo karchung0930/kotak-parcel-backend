@@ -3,6 +3,7 @@
 namespace Tests\Feature\Delivery;
 
 use App\Actions\Delivery\AssignDriver;
+use App\Actions\Settings\UpdateSettings;
 use App\Enums\OrderStatus;
 use App\Exceptions\InvalidStatusTransition;
 use App\Models\DeliveryAttempt;
@@ -159,5 +160,17 @@ class AssignDriverTest extends TestCase
         $this->expectExceptionMessage('maximum of 3 delivery attempts');
 
         $this->assignDriver->handle($order, $this->admin, User::factory()->driver()->create(), today(config('kotak.timezone')));
+    }
+
+    public function test_the_attempt_limit_follows_the_admin_setting()
+    {
+        $order = Order::factory()->deliveryFailed()->create();
+        DeliveryAttempt::factory()->failed()->for($order)->count(2)->create(['driver_id' => $order->driver_id]);
+
+        app(UpdateSettings::class)->handle($this->admin, ['max_failed_attempts' => 4]);
+
+        $this->assertTrue($order->canBeAssigned());
+        $order = $this->assignDriver->handle($order, $this->admin, User::factory()->driver()->create(), today(config('kotak.timezone')));
+        $this->assertSame(OrderStatus::Assigned, $order->status);
     }
 }

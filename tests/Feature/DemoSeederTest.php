@@ -44,6 +44,7 @@ class DemoSeederTest extends TestCase
 
         $this->assertSame(OrderStatus::Delivered, Order::byTrackingNumber('KT-00000003')->firstOrFail()->status);
         $this->assertSame(OrderStatus::Cancelled, Order::byTrackingNumber('KT-00000021')->firstOrFail()->status);
+        $this->assertSame(['KT00000024'], Order::expiredUnclaimed()->pluck('tracking_number')->all());
 
         // Every paid order has exactly one payment for its final price.
         Order::query()->whereNotNull('paid_at')->with('payment')->each(function (Order $order) {
@@ -52,6 +53,15 @@ class DemoSeederTest extends TestCase
 
         // Nothing in the demo timeline happens in the future.
         $this->assertSame(0, Order::where('updated_at', '>', now())->count());
+
+        // Two orders waiting for drop-off are due a reminder, and none has expired yet.
+        $this->assertSame(['KT00000022', 'KT00000023'], Order::dueForDropOffReminder()->orderBy('id')->pluck('tracking_number')->all());
+        $this->assertSame(0, Order::unclaimed()->count());
+        $this->assertSame(0, Order::where('status', OrderStatus::Created)->whereNull('drop_off_deadline')->count());
+        $this->assertSame(
+            today('Asia/Kuala_Lumpur')->addDays(2)->toDateString(),
+            Order::byTrackingNumber('KT-00000022')->firstOrFail()->dropOffDeadline()?->toDateString(),
+        );
     }
 
     public function test_seeded_phone_numbers_pass_the_rules_the_forms_use()

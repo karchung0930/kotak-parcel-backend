@@ -84,6 +84,7 @@ class AdminAccessTest extends TestCase
         $this->get(route('admin.branches.index'))->assertOk();
         $this->get(route('admin.branches.create'))->assertOk();
         $this->get(route('admin.branches.edit', $branch))->assertOk();
+        $this->get(route('admin.settings.edit'))->assertOk();
     }
 
     /**
@@ -111,6 +112,8 @@ class AdminAccessTest extends TestCase
             ['post', route('admin.branches.store')],
             ['get', route('admin.branches.edit', $branch)],
             ['put', route('admin.branches.update', $branch)],
+            ['get', route('admin.settings.edit')],
+            ['put', route('admin.settings.update')],
         ];
     }
 }

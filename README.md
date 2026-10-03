@@ -31,48 +31,48 @@ password **`password`**. Each role only sees its own screens:
 - **Customer**: send a parcel, follow your parcels.
 - **Staff**: the drop-off counter at their branch (weigh, confirm the price,
   take payment, print the receipt).
-- **Admin**: Dispatch (assign a driver and a date), all orders, users and
-  branches.
+- **Admin**: Dispatch (assign a driver and a date), all orders, users,
+  branches and site settings (drop-off limit, reminders, delivery attempts).
 - **Driver**: today's jobs, pick up, deliver with a photo or report a failed
   delivery.
 
 Tracking needs no account: open <https://dataflows.karchung.dev/track> and
 enter any number below.
 
-| Role     | Email                        | Notes                                |
-| -------- | ---------------------------- | ------------------------------------ |
-| Admin    | `admin@kotak.test`           | Dispatch, orders, users and branches |
-| Staff    | `staff.pj@kotak.test`        | Counter at Petaling Jaya - SS2       |
-| Staff    | `staff2.pj@kotak.test`       | Counter at Petaling Jaya - SS2       |
-| Staff    | `staff.bangsar@kotak.test`   | Counter at Bangsar South             |
-| Staff    | `staff.midvalley@kotak.test` | Counter at Mid Valley                |
-| Staff    | `staff.subang@kotak.test`    | Counter at Subang Jaya - SS15        |
-| Staff    | `staff.cheras@kotak.test`    | Counter at Cheras - Taman Connaught  |
-| Staff    | `staff.shahalam@kotak.test`  | Counter at Shah Alam - Seksyen 13    |
-| Driver   | `driver.ravi@kotak.test`     | Ravi Kumar, WXA 1234                 |
-| Driver   | `driver.faizal@kotak.test`   | Ahmad Faizal, BKM 5521               |
-| Driver   | `driver.wong@kotak.test`     | Wong Kah Wai, VFD 8812               |
-| Driver   | `driver.siti@kotak.test`     | Siti Nora, WTT 3390                  |
-| Customer | `aisyah@kotak.test`          | Aisyah Rahman, sender of the sample  |
-| Customer | `jason@kotak.test`           | Jason Tan                            |
-| Customer | `priya@kotak.test`           | Priya Nair                           |
+| Role     | Email                        | Notes                                       |
+| -------- | ---------------------------- | ------------------------------------------- |
+| Admin    | `admin@kotak.test`           | Dispatch, orders, users, branches, settings |
+| Staff    | `staff.pj@kotak.test`        | Counter at Petaling Jaya - SS2              |
+| Staff    | `staff2.pj@kotak.test`       | Counter at Petaling Jaya - SS2              |
+| Staff    | `staff.bangsar@kotak.test`   | Counter at Bangsar South                    |
+| Staff    | `staff.midvalley@kotak.test` | Counter at Mid Valley                       |
+| Staff    | `staff.subang@kotak.test`    | Counter at Subang Jaya - SS15               |
+| Staff    | `staff.cheras@kotak.test`    | Counter at Cheras - Taman Connaught         |
+| Staff    | `staff.shahalam@kotak.test`  | Counter at Shah Alam - Seksyen 13           |
+| Driver   | `driver.ravi@kotak.test`     | Ravi Kumar, WXA 1234                        |
+| Driver   | `driver.faizal@kotak.test`   | Ahmad Faizal, BKM 5521                      |
+| Driver   | `driver.wong@kotak.test`     | Wong Kah Wai, VFD 8812                      |
+| Driver   | `driver.siti@kotak.test`     | Siti Nora, WTT 3390                         |
+| Customer | `aisyah@kotak.test`          | Aisyah Rahman, sender of the sample         |
+| Customer | `jason@kotak.test`           | Jason Tan                                   |
+| Customer | `priya@kotak.test`           | Priya Nair                                  |
 
-The demo data also has six Klang Valley branches and 21 orders in every
+The demo data also has six Klang Valley branches and 24 orders in every
 status. Try tracking the sample parcel **`KT-7Q4M92XD`**: a 4.2 kg ceramic
 dinner set from Aisyah Rahman to Daniel Lim in Taman Tun Dr Ismail, out for
 delivery today.
 
-| Status             | Tracking numbers                                     | Try it as                                            |
-| ------------------ | ---------------------------------------------------- | ---------------------------------------------------- |
-| Created            | `KT-00000002`, `KT-00000007`, `KT-00000014`           | Staff: drop it off at the counter                     |
-| Dropped Off        | `KT-00000008`, `KT-00000015`                         | Staff (Cheras, Bangsar): take payment                 |
-| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`           | Admin: assign a driver in Dispatch                    |
-| Assigned           | `KT-00000010` (Siti), `KT-00000017`, `KT-00000018` (Ravi) | Driver: pick up                                  |
-| Picked Up          | `KT-7Q4M92XD` (Ravi), `KT-00000013` (Faizal)          | Driver: deliver or record a failure                   |
-| Delivered          | `KT-00000003`, `KT-00000011`, `KT-00000019`           | Anyone: tracking page with proof of delivery          |
-| Delivery Failed    | `KT-00000005`, `KT-00000020`                         | Admin: reassign or return to sender                   |
-| Returned to Sender | `KT-00000012`                                        |                                                      |
-| Cancelled          | `KT-00000006`, `KT-00000021`                         |                                                      |
+| Status             | Tracking numbers                                                          | Try it as                                                                                         |
+| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Created            | `KT-00000002`, `KT-00000007`, `KT-00000014`, `KT-00000022`, `KT-00000023` | Staff: drop it off at the counter. 22 and 23 are due a reminder and expire 3 nights after seeding |
+| Dropped Off        | `KT-00000008`, `KT-00000015`                                              | Staff (Cheras, Bangsar): take payment                                                             |
+| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`                               | Admin: assign a driver in Dispatch                                                                |
+| Assigned           | `KT-00000010` (Siti), `KT-00000017`, `KT-00000018` (Ravi)                 | Driver: pick up                                                                                   |
+| Picked Up          | `KT-7Q4M92XD` (Ravi), `KT-00000013` (Faizal)                              | Driver: deliver or record a failure                                                               |
+| Delivered          | `KT-00000003`, `KT-00000011`, `KT-00000019`                               | Anyone: tracking page with proof of delivery                                                      |
+| Delivery Failed    | `KT-00000005`, `KT-00000020`                                              | Admin: reassign or return to sender                                                               |
+| Returned to Sender | `KT-00000012`                                                             |                                                                                                   |
+| Cancelled          | `KT-00000006`, `KT-00000021`, `KT-00000024` (never dropped off)           |                                                                                                   |
 
 ## What it is
 
@@ -92,20 +92,20 @@ Laravel application, with the same boundaries (see
 
 ### How each requirement maps to the app
 
-| Requirement                                                                                | Where                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Register and log in; each role only reaches its own screens                                | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                          |
-| Create an order: delivery address, item name, weight and dimensions                        | **Send a parcel** (`orders/Create`) → `CreateOrder`                                                                                                                                                                                 |
-| Show an estimated price, a tracking number and the nearest branch                          | Live estimate from `PriceCalculator` (mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                                                                             |
-| Drop off at a branch; staff weigh it and set the final price                               | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_                                                                                                                                         |
-| Pay at the counter by cash or card, with a receipt                                         | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                  |
-| Cancel an order, only before it is paid                                                    | Customer and counter cancel buttons → `CancelOrder`. Orders that are never dropped off are cancelled after 14 days by `orders:expire-unclaimed`                                                                                     |
-| Admin assigns a paid order to a driver and schedules the delivery day                      | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_                                                                                                                                                                       |
-| Driver picks up and delivers, with proof of delivery                                       | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                            |
-| Driver reports a failed delivery; admin reschedules it                                     | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (`config/kotak.php`) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier |
-| Track a parcel by its tracking number                                                      | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                      |
-| Notify the customer when the status changes                                                | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email                                                                                                                                      |
-| Beyond the brief: pricing and branch pages, admin order search, user and branch management | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`                                                                                                                                                  |
+| Requirement                                                                                               | Where                                                                                                                                                                                                                                              |
+| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Register and log in; each role only reaches its own screens                                               | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                         |
+| Create an order: delivery address, item name, weight and dimensions                                       | **Send a parcel** (`orders/Create`) → `CreateOrder`                                                                                                                                                                                                |
+| Show an estimated price, a tracking number and the nearest branch                                         | Live estimate from `PriceCalculator` (mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                                                                                            |
+| Drop off at a branch; staff weigh it and set the final price                                              | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_                                                                                                                                                        |
+| Pay at the counter by cash or card, with a receipt                                                        | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                 |
+| Cancel an order, only before it is paid                                                                   | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline |
+| Admin assigns a paid order to a driver and schedules the delivery day                                     | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_                                                                                                                                                                                      |
+| Driver picks up and delivers, with proof of delivery                                                      | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                           |
+| Driver reports a failed delivery; admin reschedules it                                                    | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                  |
+| Track a parcel by its tracking number                                                                     | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                     |
+| Notify the customer when the status changes                                                               | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires                                                                                        |
+| Beyond the brief: pricing and branch pages, admin order search, user and branch management, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/Settings` (with drop-off timing)                                                                                                                        |
 
 **Pricing** (`config/kotak.php`): RM 8.00 for the first kg, then RM 2.00 for
 each further kg, rounded up. The chargeable weight is the greater of:
@@ -162,15 +162,16 @@ database. A small courier doesn't need network calls, a message broker and six
 databases to run this. The module boundaries are kept, so a busy module (most
 likely Tracking) can be split out later.
 
-| Module       | Backend                                                                                                                  | Screens                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------- |
-| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`         | auth, settings, admin users                 |
-| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `PriceCalculator`, `TrackingNumber`, `OrderPolicy`     | Send a parcel, My parcels, counter weighing |
-| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                             | counter payment, receipt                    |
-| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController` | Dispatch, My jobs                           |
-| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                       | Track                                       |
-| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`                                                | email                                       |
-| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                     | Branches, admin branches                    |
+| Module       | Backend                                                                                                                               | Screens                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`                      | auth, settings, admin users                 |
+| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `PriceCalculator`, `TrackingNumber`, `OrderPolicy`, `DropOffTiming` | Send a parcel, My parcels, counter weighing |
+| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                          | counter payment, receipt                    |
+| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`              | Dispatch, My jobs                           |
+| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                    | Track                                       |
+| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`                                          | email                                       |
+| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                  | Branches, admin branches                    |
+| Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                 | Site settings                               |
 
 - **Controllers stay thin.** Each business step is a single-purpose action
   class (`app/Actions/*`). Controllers authorise, validate through a Form
@@ -218,6 +219,54 @@ be cancelled before it is paid, so no refund is ever needed.
 - It only writes to customers with a verified email address. It skips driver
   swaps that don't change the delivery day.
 
+### Site settings and scheduled jobs
+
+Admins change three business rules on **Site settings** (`admin/Settings`).
+Each falls back to its default in `config/kotak.php` until it is saved:
+
+| Setting                         | Default | Allowed                     |
+| ------------------------------- | ------- | --------------------------- |
+| `unclaimed_order_days`          | 7       | 2 to 60                     |
+| `drop_off_reminder_days_before` | 2       | 0 (no reminder) to days − 1 |
+| `max_failed_attempts`           | 3       | 1 to 10                     |
+
+- `App\Support\Settings` reads the saved values in one query and caches them
+  under one key for ten minutes. `UpdateSettings` writes the new values to
+  the cache after a save, rather than only forgetting the key, so a request
+  that read the table just before cannot cache the old ones. The container
+  keeps one instance per request or queued job, so repeated reads stay in
+  memory.
+- A saved value is stored even when it equals the default, so a later change
+  to `config/kotak.php` never changes a rule an admin chose.
+- Each order gets its drop-off deadline when it is placed
+  (`orders.drop_off_deadline`): the order day in Malaysia plus the limit at
+  that moment. A new limit only applies to orders placed afterwards, so every
+  date a customer has been shown stays true.
+- The same page shows how long customers take to drop parcels off in the last
+  90 days (`DropOffTiming`): median, 90th and 95th percentile, the share
+  within the current limit, orders cancelled as unclaimed, and the orders
+  waiting now. Days are Malaysian calendar days from the order day, the way
+  the limit counts them. It is worked out in PHP from `created_at` and
+  `dropped_off_at`, so SQLite and MySQL give the same numbers.
+
+The scheduler runs two jobs, both in Malaysia time and never overlapping:
+
+| Command                   | When  | What it does                                                                                                         |
+| ------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
+| `orders:remind-unclaimed` | 09:00 | Emails a `DropOffReminder` from `drop_off_reminder_days_before` days before the order's deadline day                 |
+| `orders:expire-unclaimed` | 00:00 | Cancels orders still not dropped off once their deadline day has ended (`ExpireUnclaimedOrders`, `Order::unclaimed`) |
+
+- Each reminder locks the order and sets `drop_off_reminded_at` in one
+  transaction before the email is queued, so a second or overlapping run
+  never reminds anyone twice.
+- Only active customers with a verified email address are written to, and
+  the queued email is dropped if, in the meantime, the parcel was dropped
+  off, the order cancelled or the account deactivated.
+- The email gives the tracking number, the branch's address and opening
+  hours, the drop-off deadline (a date in Malaysia time), a link to the order
+  and a note that it can be cancelled. The order page and the list show the
+  same deadline, worked out on the server.
+
 ### Frontend
 
 The pages, layouts and components are described in the
@@ -249,6 +298,7 @@ Three layers protect every route:
 1. Role middleware on each route file.
 2. A Policy for each record. Customers see only their own orders. Drivers see
    only the active jobs assigned to them. Staff and admins work the counter.
+   Only admins see or change the site settings.
 3. A Form Request that validates all input.
 
 Actions write only values they computed themselves, never raw request input.
@@ -333,16 +383,16 @@ update script are in [`deploy/`](deploy).
   Supervisor or systemd. Run `php artisan queue:restart` on each deploy. The
   `database` queue is fine to start with; Redis is the step up.
 - **Scheduler**: run `php artisan schedule:run` every minute (a systemd timer
-  in [`deploy/systemd`](deploy/systemd), or cron). It cancels unclaimed
-  orders at midnight Malaysia time.
+  in [`deploy/systemd`](deploy/systemd), or cron). It sends drop-off
+  reminders at 9:00 and cancels unclaimed orders at midnight, Malaysia time.
 - **Private storage**: proof-of-delivery photos live in `storage/app/private`,
   outside the web root. Back it up with the database. With more than one web
   server, move the photos to a private S3-compatible bucket; only the disk
   name in `RecordDeliverySuccess` and `ProofOfDeliveryController` changes.
 - **Mail**: set a real mailer, for example Amazon SES through
   `MAIL_MAILER=smtp` (no extra package), and `MAIL_FROM_ADDRESS` on a domain
-  with SPF and DKIM set up. Status emails only go out while the queue worker
-  runs.
+  with SPF and DKIM set up. Status and reminder emails only go out while the
+  queue worker runs.
 
 ## What I'd add next
 

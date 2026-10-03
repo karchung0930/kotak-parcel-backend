@@ -30,9 +30,10 @@ composer run dev                 # http://localhost:8000, a queue listener and t
   Without it, run `php artisan queue:work` yourself, or status emails stay in
   the `jobs` table. Locally, emails are written to `storage/logs/laravel.log`
   (`MAIL_MAILER=log`).
-- **Scheduler.** It is only needed for the nightly clean-up of unclaimed
-  orders. Run `php artisan schedule:work` in another terminal, or call the
-  job directly with `php artisan orders:expire-unclaimed`.
+- **Scheduler.** It is only needed for the 9:00 drop-off reminders and the
+  nightly clean-up of unclaimed orders. Run `php artisan schedule:work` in
+  another terminal, or call the jobs directly with
+  `php artisan orders:remind-unclaimed` and `php artisan orders:expire-unclaimed`.
 - **Wayfinder.** The Vite plugin regenerates the route helpers. If they are
   missing, run `php artisan wayfinder:generate --with-form`.
 - **Photos** go to the private disk, so `storage:link` is not needed.
@@ -56,6 +57,7 @@ The PHP tests cover:
 - payments
 - proof-of-delivery privacy
 - the queued notifications
+- the site settings, the drop-off timing figures and the reminder job
 - rate limits and security headers
 - the demo seeder
 

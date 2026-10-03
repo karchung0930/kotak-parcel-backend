@@ -21,7 +21,8 @@ class CreateOrder
     ) {}
 
     /**
-     * Create a delivery order, estimating the price from the declared weight and size.
+     * Create a delivery order, estimating the price from the declared weight
+     * and size. The drop-off deadline is fixed now, from the current limit.
      *
      * @param  array<string, mixed>  $data  validated input: branch_id, receiver_name, receiver_phone,
      *                                      address_line1, address_line2, city, state, postcode, item_name,
@@ -51,6 +52,7 @@ class CreateOrder
             'sender_phone' => $customer->phone,
             'chargeable_weight_g' => $chargeable,
             'estimated_price_sen' => $this->pricing->priceSen($chargeable),
+            'drop_off_deadline' => Order::dropOffDeadlineFor(now())->toDateString(),
         ]);
 
         return DB::transaction(function () use ($order, $customer): Order {

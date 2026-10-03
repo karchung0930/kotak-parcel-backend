@@ -5,7 +5,9 @@ namespace App\Models;
 use App\Enums\DeliveryOutcome;
 use App\Enums\MalaysianState;
 use App\Enums\OrderStatus;
+use App\Support\Settings;
 use App\Support\TrackingNumber;
+use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -47,6 +49,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int|null $final_price_sen
  * @property int|null $driver_id
  * @property CarbonInterface|null $scheduled_for
+ * @property CarbonInterface|null $drop_off_deadline
+ * @property CarbonInterface|null $drop_off_reminded_at
  * @property CarbonInterface|null $dropped_off_at
  * @property CarbonInterface|null $paid_at
  * @property CarbonInterface|null $delivered_at
@@ -94,6 +98,8 @@ class Order extends Model
             'estimated_price_sen' => 'integer',
             'final_price_sen' => 'integer',
             'scheduled_for' => 'date',
+            'drop_off_deadline' => 'date',
+            'drop_off_reminded_at' => 'datetime',
             'dropped_off_at' => 'datetime',
             'paid_at' => 'datetime',
             'delivered_at' => 'datetime',
@@ -238,9 +244,36 @@ class Order extends Model
     {
         return match ($this->status) {
             OrderStatus::Paid, OrderStatus::Assigned => true,
-            OrderStatus::DeliveryFailed => $this->failedAttemptsCount() < config()->integer('kotak.max_failed_attempts'),
+            OrderStatus::DeliveryFailed => $this->failedAttemptsCount() < app(Settings::class)->maxFailedAttempts(),
             default => false,
         };
+    }
+
+    /**
+     * Get the last Malaysian calendar day to drop the parcel off, while it is
+     * waiting for drop-off. It is fixed when the order is placed, so a later
+     * change to the limit never moves a date the customer has been given.
+     */
+    public function dropOffDeadline(): ?CarbonImmutable
+    {
+        if ($this->status !== OrderStatus::Created || $this->drop_off_deadline === null) {
+            return null;
+        }
+
+        return CarbonImmutable::parse($this->drop_off_deadline->toDateString(), config()->string('kotak.timezone'));
+    }
+
+    /**
+     * Get the drop-off deadline for an order placed at the given moment: the
+     * order day in Malaysia plus the current limit. The nightly job cancels
+     * the order once that day has ended.
+     */
+    public static function dropOffDeadlineFor(CarbonInterface $placedAt): CarbonImmutable
+    {
+        return $placedAt->toImmutable()
+            ->setTimezone(config()->string('kotak.timezone'))
+            ->startOfDay()
+            ->addDays(app(Settings::class)->unclaimedOrderDays());
     }
 
     /**
@@ -380,14 +413,65 @@ class Order extends Model
     }
 
     /**
-     * Scope a query to orders that were never dropped off within the allowed time.
+     * Scope a query to orders still waiting for drop-off after their deadline
+     * day: the ones the nightly job cancels when it runs on the given day
+     * (Malaysia), today by default.
+     *
+     * A plain comparison with the date string, as for scheduled_for, rather
+     * than whereDate(), which would wrap the column in a function.
      *
      * @param  Builder<self>  $query
      */
     #[Scope]
-    protected function unclaimed(Builder $query): void
+    protected function unclaimed(Builder $query, ?CarbonInterface $on = null): void
     {
+        $on ??= today(config()->string('kotak.timezone'));
+
         $query->where('status', OrderStatus::Created)
-            ->where('created_at', '<=', now()->subDays(config()->integer('kotak.unclaimed_order_days')));
+            ->where('drop_off_deadline', '<', $on->toDateString());
+    }
+
+    /**
+     * Scope a query to orders waiting for drop-off whose customer is due a
+     * reminder: the deadline is today or within the reminder lead time, and
+     * nobody was reminded before. Counted in Malaysian calendar days, so an
+     * order is reminded on the same day whatever time it was placed. Matches
+     * nothing when reminders are off.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function dueForDropOffReminder(Builder $query): void
+    {
+        $lead = app(Settings::class)->dropOffReminderDaysBefore();
+
+        if ($lead === 0) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $today = today(config()->string('kotak.timezone'));
+
+        $query->where('status', OrderStatus::Created)
+            ->whereNull('drop_off_reminded_at')
+            ->where('drop_off_deadline', '>=', $today->toDateString())
+            ->where('drop_off_deadline', '<', $today->addDays($lead + 1)->toDateString());
+    }
+
+    /**
+     * Scope a query to orders the nightly job cancelled for never being
+     * dropped off. That job is the only thing that cancels without an actor.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function expiredUnclaimed(Builder $query): void
+    {
+        $query->where('status', OrderStatus::Cancelled)
+            ->whereNull('dropped_off_at')
+            ->whereHas('statusEvents', fn (Builder $events) => $events
+                ->where('to_status', OrderStatus::Cancelled)
+                ->whereNull('actor_id'));
     }
 }

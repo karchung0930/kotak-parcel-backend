@@ -2,12 +2,13 @@
 
 namespace App\Providers;
 
+use App\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Middleware\TrustProxies;
-use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -22,7 +23,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // One instance per request or queued job: the settings are read once
+        // per request, and a long-running worker still sees changes.
+        $this->app->scoped(Settings::class);
     }
 
     /**

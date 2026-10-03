@@ -7,6 +7,7 @@ use App\Exceptions\InvalidStatusTransition;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\OrderStatusService;
+use App\Support\Settings;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -18,6 +19,7 @@ class AssignDriver
      */
     public function __construct(
         private OrderStatusService $statuses,
+        private Settings $settings,
     ) {}
 
     /**
@@ -49,7 +51,7 @@ class AssignDriver
                 throw $order->status === OrderStatus::DeliveryFailed
                     ? new InvalidStatusTransition(sprintf(
                         'This parcel has reached the maximum of %d delivery attempts and must be returned to the sender.',
-                        config()->integer('kotak.max_failed_attempts'),
+                        $this->settings->maxFailedAttempts(),
                     ))
                     : InvalidStatusTransition::between($order->status, OrderStatus::Assigned);
             }

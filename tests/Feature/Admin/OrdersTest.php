@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\Settings;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -149,6 +150,9 @@ class OrdersTest extends TestCase
         Model::preventLazyLoading();
 
         Order::factory()->assigned()->create();
+
+        // The settings are read once and then cached, so warm them up first.
+        app(Settings::class)->all();
 
         $few = $this->countQueries(fn () => $this->actingAs($this->admin)->get(route('admin.orders.index'))->assertOk());
 

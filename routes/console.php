@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Orders\ExpireUnclaimedOrders;
+use App\Actions\Orders\SendDropOffReminders;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -13,8 +14,18 @@ Artisan::command('orders:expire-unclaimed', function (ExpireUnclaimedOrders $exp
     $this->info("Cancelled {$expire->handle()} unclaimed order(s).");
 })->purpose('Cancel orders that were never dropped off at a branch');
 
+Artisan::command('orders:remind-unclaimed', function (SendDropOffReminders $remind) {
+    $this->info("Queued {$remind->handle()} drop-off reminder(s).");
+})->purpose('Remind customers to drop off orders that will soon be cancelled');
+
 // Runs at midnight Malaysia time.
 Schedule::command('orders:expire-unclaimed')
     ->daily()
+    ->timezone(config()->string('kotak.timezone'))
+    ->withoutOverlapping();
+
+// Runs at 9am Malaysia time, when branches are opening.
+Schedule::command('orders:remind-unclaimed')
+    ->dailyAt('09:00')
     ->timezone(config()->string('kotak.timezone'))
     ->withoutOverlapping();

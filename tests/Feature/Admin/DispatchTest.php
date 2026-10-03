@@ -6,6 +6,7 @@ use App\Enums\OrderStatus;
 use App\Models\DeliveryAttempt;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -197,6 +198,9 @@ class DispatchTest extends TestCase
         $driver = User::factory()->driver()->create();
         Order::factory()->paid()->create();
         Order::factory()->deliveryFailed($driver)->create();
+
+        // The settings are read once and then cached, so warm them up first.
+        app(Settings::class)->all();
 
         $few = $this->countQueries(fn () => $this->actingAs($this->admin)->get(route('admin.dispatch'))->assertOk());
 
