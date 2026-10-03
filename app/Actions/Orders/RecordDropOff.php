@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Services\OrderStatusService;
 use App\Support\PriceCalculator;
+use App\Support\RateCards;
 
 class RecordDropOff
 {
@@ -15,11 +16,14 @@ class RecordDropOff
      */
     public function __construct(
         private PriceCalculator $pricing,
+        private RateCards $rateCards,
         private OrderStatusService $statuses,
     ) {}
 
     /**
-     * Record that branch staff received and weighed the parcel, and set its final price.
+     * Record that branch staff received and weighed the parcel, and set its
+     * final price with the rate card current now, on the route from the
+     * branch where it was handed in.
      *
      * Staff may correct the dimensions; the chargeable weight and price are recomputed.
      */
@@ -35,17 +39,25 @@ class RecordDropOff
         $widthCm ??= $order->width_cm;
         $heightCm ??= $order->height_cm;
 
-        $chargeable = $this->pricing->chargeableWeightGrams($measuredWeightG, $lengthCm, $widthCm, $heightCm);
+        // The parcel is now physically at the staff member's branch.
+        $branch = $staff->branch ?? $order->branch;
+
+        $quote = $this->pricing->quote(
+            $this->rateCards->current(),
+            $branch->state,
+            $order->state,
+            $measuredWeightG, $lengthCm, $widthCm, $heightCm,
+        );
 
         return $this->statuses->transition($order, OrderStatus::DroppedOff, $staff, attributes: [
-            // The parcel is now physically at the staff member's branch.
-            'branch_id' => $staff->branch_id ?? $order->branch_id,
+            'branch_id' => $branch->id,
             'measured_weight_g' => $measuredWeightG,
             'length_cm' => $lengthCm,
             'width_cm' => $widthCm,
             'height_cm' => $heightCm,
-            'chargeable_weight_g' => $chargeable,
-            'final_price_sen' => $this->pricing->priceSen($chargeable),
+            'chargeable_weight_g' => $quote->chargeableG,
+            'final_price_sen' => $quote->priceSen,
+            'final_rate_card_id' => $quote->rateCardId,
         ]);
     }
 }

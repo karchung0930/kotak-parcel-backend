@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Support\RateCards;
 use App\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -23,9 +24,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        // One instance per request or queued job: the settings are read once
-        // per request, and a long-running worker still sees changes.
+        // One instance per request or queued job: the settings and rate cards
+        // are read once per request, and a long-running worker still sees changes.
         $this->app->scoped(Settings::class);
+        $this->app->scoped(RateCards::class);
     }
 
     /**

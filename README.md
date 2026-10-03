@@ -32,41 +32,48 @@ password **`password`**. Each role only sees its own screens:
 - **Staff**: the drop-off counter at their branch (weigh, confirm the price,
   take payment, print the receipt).
 - **Admin**: Dispatch (assign a driver and a date), all orders, users,
-  branches and site settings (drop-off limit, reminders, delivery attempts).
+  branches, rates (versioned price lists by zone and weight) and site
+  settings (drop-off limit, reminders, delivery attempts).
 - **Driver**: today's jobs, pick up, deliver with a photo or report a failed
   delivery.
 
 Tracking needs no account: open <https://dataflows.karchung.dev/track> and
 enter any number below.
 
-| Role     | Email                        | Notes                                       |
-| -------- | ---------------------------- | ------------------------------------------- |
-| Admin    | `admin@kotak.test`           | Dispatch, orders, users, branches, settings |
-| Staff    | `staff.pj@kotak.test`        | Counter at Petaling Jaya - SS2              |
-| Staff    | `staff2.pj@kotak.test`       | Counter at Petaling Jaya - SS2              |
-| Staff    | `staff.bangsar@kotak.test`   | Counter at Bangsar South                    |
-| Staff    | `staff.midvalley@kotak.test` | Counter at Mid Valley                       |
-| Staff    | `staff.subang@kotak.test`    | Counter at Subang Jaya - SS15               |
-| Staff    | `staff.cheras@kotak.test`    | Counter at Cheras - Taman Connaught         |
-| Staff    | `staff.shahalam@kotak.test`  | Counter at Shah Alam - Seksyen 13           |
-| Driver   | `driver.ravi@kotak.test`     | Ravi Kumar, WXA 1234                        |
-| Driver   | `driver.faizal@kotak.test`   | Ahmad Faizal, BKM 5521                      |
-| Driver   | `driver.wong@kotak.test`     | Wong Kah Wai, VFD 8812                      |
-| Driver   | `driver.siti@kotak.test`     | Siti Nora, WTT 3390                         |
-| Customer | `aisyah@kotak.test`          | Aisyah Rahman, sender of the sample         |
-| Customer | `jason@kotak.test`           | Jason Tan                                   |
-| Customer | `priya@kotak.test`           | Priya Nair                                  |
+| Role     | Email                        | Notes                                              |
+| -------- | ---------------------------- | -------------------------------------------------- |
+| Admin    | `admin@kotak.test`           | Dispatch, orders, users, branches, rates, settings |
+| Staff    | `staff.pj@kotak.test`        | Counter at Petaling Jaya - SS2                     |
+| Staff    | `staff2.pj@kotak.test`       | Counter at Petaling Jaya - SS2                     |
+| Staff    | `staff.bangsar@kotak.test`   | Counter at Bangsar South                           |
+| Staff    | `staff.midvalley@kotak.test` | Counter at Mid Valley                              |
+| Staff    | `staff.subang@kotak.test`    | Counter at Subang Jaya - SS15                      |
+| Staff    | `staff.cheras@kotak.test`    | Counter at Cheras - Taman Connaught                |
+| Staff    | `staff.shahalam@kotak.test`  | Counter at Shah Alam - Seksyen 13                  |
+| Driver   | `driver.ravi@kotak.test`     | Ravi Kumar, WXA 1234                               |
+| Driver   | `driver.faizal@kotak.test`   | Ahmad Faizal, BKM 5521                             |
+| Driver   | `driver.wong@kotak.test`     | Wong Kah Wai, VFD 8812                             |
+| Driver   | `driver.siti@kotak.test`     | Siti Nora, WTT 3390                                |
+| Customer | `aisyah@kotak.test`          | Aisyah Rahman, sender of the sample                |
+| Customer | `jason@kotak.test`           | Jason Tan                                          |
+| Customer | `priya@kotak.test`           | Priya Nair                                         |
 
-The demo data also has six Klang Valley branches and 24 orders in every
+The demo data also has six Klang Valley branches and 25 orders in every
 status. Try tracking the sample parcel **`KT-7Q4M92XD`**: a 4.2 kg ceramic
 dinner set from Aisyah Rahman to Daniel Lim in Taman Tun Dr Ismail, out for
 delivery today.
+
+It also has three versions of the rates (admin **Rates**): the Standard
+rates that older orders were priced with, the zone rates in effect since a
+few days ago (Peninsular Malaysia, Sabah & Labuan, Sarawak), and higher East
+Malaysia rates scheduled for the 1st of next month, which the pricing page
+announces.
 
 | Status             | Tracking numbers                                                          | Try it as                                                                                         |
 | ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | Created            | `KT-00000002`, `KT-00000007`, `KT-00000014`, `KT-00000022`, `KT-00000023` | Staff: drop it off at the counter. 22 and 23 are due a reminder and expire 3 nights after seeding |
 | Dropped Off        | `KT-00000008`, `KT-00000015`                                              | Staff (Cheras, Bangsar): take payment                                                             |
-| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`                               | Admin: assign a driver in Dispatch                                                                |
+| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`, `KT-00000025`                | Admin: assign a driver in Dispatch. 25 goes to Kuching, priced with the zone rates                |
 | Assigned           | `KT-00000010` (Siti), `KT-00000017`, `KT-00000018` (Ravi)                 | Driver: pick up                                                                                   |
 | Picked Up          | `KT-7Q4M92XD` (Ravi), `KT-00000013` (Faizal)                              | Driver: deliver or record a failure                                                               |
 | Delivered          | `KT-00000003`, `KT-00000011`, `KT-00000019`                               | Anyone: tracking page with proof of delivery                                                      |
@@ -92,29 +99,37 @@ Laravel application, with the same boundaries (see
 
 ### How each requirement maps to the app
 
-| Requirement                                                                                               | Where                                                                                                                                                                                                                                              |
-| --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Register and log in; each role only reaches its own screens                                               | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                         |
-| Create an order: delivery address, item name, weight and dimensions                                       | **Send a parcel** (`orders/Create`) → `CreateOrder`                                                                                                                                                                                                |
-| Show an estimated price, a tracking number and the nearest branch                                         | Live estimate from `PriceCalculator` (mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                                                                                            |
-| Drop off at a branch; staff weigh it and set the final price                                              | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_                                                                                                                                                        |
-| Pay at the counter by cash or card, with a receipt                                                        | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                 |
-| Cancel an order, only before it is paid                                                                   | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline |
-| Admin assigns a paid order to a driver and schedules the delivery day                                     | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_                                                                                                                                                                                      |
-| Driver picks up and delivers, with proof of delivery                                                      | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                           |
-| Driver reports a failed delivery; admin reschedules it                                                    | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                  |
-| Track a parcel by its tracking number                                                                     | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                     |
-| Notify the customer when the status changes                                                               | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires                                                                                        |
-| Beyond the brief: pricing and branch pages, admin order search, user and branch management, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/Settings` (with drop-off timing)                                                                                                                        |
+| Requirement                                                                                                      | Where                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Register and log in; each role only reaches its own screens                                                      | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                         |
+| Create an order: delivery address, item name, weight and dimensions                                              | **Send a parcel** (`orders/Create`) → `CreateOrder`                                                                                                                                                                                                |
+| Show an estimated price, a tracking number and the nearest branch                                                | Live estimate with the current rate card, from the chosen branch to the receiver's state (`RateCards`, `PriceCalculator`, mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance        |
+| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                                                                                     |
+| Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                 |
+| Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline |
+| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_                                                                                                                                                                                      |
+| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                           |
+| Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                  |
+| Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                     |
+| Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires                                                                                        |
+| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards), `admin/Settings` (with drop-off timing)                                                                                  |
 
-**Pricing** (`config/kotak.php`): RM 8.00 for the first kg, then RM 2.00 for
-each further kg, rounded up. The chargeable weight is the greater of:
+**Pricing** comes from the rate card in effect (see
+[Rate cards](#rate-cards)). The chargeable weight is the greater of:
 
 - the actual weight
-- the volumetric weight: length × width × height (cm) ÷ 5000
+- the volumetric weight: length × width × height (cm) ÷ the card's divisor
+  (5000)
 
-A parcel can weigh up to 30 kg, with each side up to 150 cm. Money is stored
-as integer sen and weight as grams.
+The route runs from the zone of the drop-off branch's state to the zone of
+the delivery state. The price is that of the route's lightest weight band
+that covers the chargeable weight; above the highest band, each started kg
+costs the route's price per extra kg. Within Peninsular Malaysia the demo
+rates are RM 8.00 up to 1 kg, then RM 2.00 for each further kg: the old
+flat formula, so the 4.2 kg sample (6 kg by size) costs RM 18.00.
+
+A parcel can weigh up to 30 kg, with each side up to 150 cm
+(`config/kotak.php`). Money is stored as integer sen and weight as grams.
 
 ## Stack
 
@@ -162,16 +177,17 @@ database. A small courier doesn't need network calls, a message broker and six
 databases to run this. The module boundaries are kept, so a busy module (most
 likely Tracking) can be split out later.
 
-| Module       | Backend                                                                                                                               | Screens                                     |
-| ------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`                      | auth, settings, admin users                 |
-| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `PriceCalculator`, `TrackingNumber`, `OrderPolicy`, `DropOffTiming` | Send a parcel, My parcels, counter weighing |
-| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                          | counter payment, receipt                    |
-| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`              | Dispatch, My jobs                           |
-| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                    | Track                                       |
-| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`                                          | email                                       |
-| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                  | Branches, admin branches                    |
-| Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                 | Site settings                               |
+| Module       | Backend                                                                                                                                                                      | Screens                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`                                                             | auth, settings, admin users                 |
+| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `TrackingNumber`, `OrderPolicy`, `DropOffTiming`                                                           | Send a parcel, My parcels, counter weighing |
+| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                                                                 | counter payment, receipt                    |
+| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`                                                     | Dispatch, My jobs                           |
+| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                                                           | Track                                       |
+| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`                                                                                 | email                                       |
+| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                                                         | Branches, admin branches                    |
+| Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                                                        | Site settings                               |
+| Pricing      | `RateCard` (with its zones, routes and bands), `RateCards`, `PriceList`, `PriceCalculator`, `PriceQuote`, `Actions/RateCards/*`, `RateCardPolicy`, `Admin\RateCardController` | Pricing, admin Rates                        |
 
 - **Controllers stay thin.** Each business step is a single-purpose action
   class (`app/Actions/*`). Controllers authorise, validate through a Form
@@ -207,6 +223,62 @@ The allowed moves are:
 
 `delivered`, `returned_to_sender` and `cancelled` are final. A parcel can only
 be cancelled before it is paid, so no refund is ever needed.
+
+### Rate cards
+
+Prices are versioned rate cards, which admins manage on **Rates**
+(`admin/rates`). A card has zones (groups of states, such as Sabah &
+Labuan), a route for every ordered pair of zones (Sabah to Sarawak is not
+Sarawak to Sabah), and on each route weight bands with a price, plus a price
+for each kg above the highest band. Money is sen and weight is grams
+throughout.
+
+- **Published cards never change.** To change prices, an admin copies any
+  version (or starts blank) into a draft, edits its zones and its grid of
+  bands × routes, and publishes it now or at a date and time in Malaysia. A
+  draft can be saved unfinished; publishing (`PublishRateCard`) lists every
+  problem at once: a state in no zone or in two, a zone without states, a
+  missing route, a route without bands, a band over the weight limit, prices
+  that go down as the weight goes up, or a missing price per extra kg. The
+  time must be from the current minute to two years ahead, and no two cards
+  take effect at the same moment.
+- **Admins see where each card stands**, worked out rather than stored:
+  Draft, Scheduled (published, still to take effect), Current (the published
+  card that took effect last) or Past. A scheduled card can be withdrawn to a
+  draft before it takes effect, and drafts can be deleted. A card that priced
+  an order is never edited or deleted.
+- Each action re-reads the card under a row lock and checks its state there,
+  so an admin acting on a page gone stale (a withdraw a minute too late, or
+  saving a draft another admin has just published) is told why on the page.
+- A zone's code is made from its name ("Sabah & Labuan" → `sabah-labuan`),
+  so a name needs Latin letters or numbers.
+- `App\Support\RateCards` caches every published card as one list of
+  compact price lists (`PriceList`). It picks the current card when asked,
+  by the time, so a scheduled card takes over at its moment without the
+  cache being touched, and `upcoming()` lets the pricing page announce new
+  rates. Publishing and withdrawing write the list to the cache again after
+  they commit, one at a time under a cache lock; readers only add a copy, so
+  a request that read the table just before cannot cache the old list. Each
+  request or queued job reads it at most once.
+- `PriceCalculator::quote()` prices a parcel on a card and returns a
+  `PriceQuote` (zones, volumetric and chargeable weight, band, extra kg and
+  price). `CreateOrder` quotes with the current card from the chosen branch;
+  `RecordDropOff` quotes with the card in effect at drop-off, from the
+  branch where the parcel was handed in. Each order keeps both cards
+  (`estimated_rate_card_id`, `final_rate_card_id`), which the counter and
+  the admin order page show.
+- The browser gets the current card in the same compact form and
+  `lib/pricing.ts` applies the same rules for the live estimates. Public
+  and customer pages get it without the card's id and name
+  (`PriceCalculator::publicRules()`), which are for staff and admins. Both
+  sides run the shared cases in the frontend's
+  `tests/js/fixtures/pricing-cases.json` (`PriceCalculatorTest` reads them
+  from the frontend checkout).
+- A migration publishes the old prices as the **Standard rates**: one zone
+  with every state and one band up to 1 kg at RM 8.00 plus RM 2.00 per extra
+  kg, which gives the old formula exactly. It takes effect before the
+  earliest order and every existing order points at it, so no seeder is
+  needed in production.
 
 ### Events after commit, notifications on the queue
 
@@ -298,7 +370,7 @@ Three layers protect every route:
 1. Role middleware on each route file.
 2. A Policy for each record. Customers see only their own orders. Drivers see
    only the active jobs assigned to them. Staff and admins work the counter.
-   Only admins see or change the site settings.
+   Only admins see or change the site settings and the rate cards.
 3. A Form Request that validates all input.
 
 Actions write only values they computed themselves, never raw request input.

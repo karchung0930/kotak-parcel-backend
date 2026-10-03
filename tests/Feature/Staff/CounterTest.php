@@ -8,10 +8,12 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\CreatesRateCards;
 use Tests\TestCase;
 
 class CounterTest extends TestCase
 {
+    use CreatesRateCards;
     use RefreshDatabase;
 
     private Branch $branch;
@@ -126,10 +128,45 @@ class CounterTest extends TestCase
                 ->has('order.payment.received_by')
                 ->has('order.status_events', 3)
                 ->has('order.status_events.0.actor')
-                ->where('pricing.base', config('kotak.base_price_sen'))
+                ->where('order.final_rate_card', ['id' => $order->final_rate_card_id, 'name' => 'Standard rates'])
+                ->where('pricing.name', 'Standard rates')
+                ->where('pricing.maxWeightG', 30000)
                 ->where('paymentMethods', [
                     ['value' => 'cash', 'label' => 'Cash'],
                     ['value' => 'card', 'label' => 'Card'],
                 ]));
+    }
+
+    public function test_a_parcel_to_weigh_is_priced_live_from_this_counter_with_the_current_rates()
+    {
+        $card = $this->zoneRates();
+        $sabahCounter = Branch::factory()->create(['state' => 'Sabah', 'city' => 'Kota Kinabalu']);
+        // Booked for a Klang Valley branch, handed in at the Sabah counter.
+        $order = Order::factory()->for($this->branch)->create();
+
+        $this->actingAs(User::factory()->staff($sabahCounter)->create())
+            ->get(route('staff.orders.show', $order))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pricing.id', $card->id)
+                ->where('origin', 'Sabah'));
+
+        $this->actingAs(User::factory()->admin()->create())
+            ->get(route('staff.orders.show', $order))
+            ->assertInertia(fn (Assert $page) => $page->where('origin', $this->branch->state->value));
+    }
+
+    public function test_a_weighed_parcel_shows_the_rates_that_set_its_price()
+    {
+        $order = Order::factory()->droppedOff()->for($this->branch)->create();
+        $standardId = $order->final_rate_card_id;
+        $this->zoneRates();
+
+        $this->actingAs($this->staff)
+            ->get(route('staff.orders.show', $order))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('pricing.id', $standardId)
+                ->where('origin', $this->branch->state->value)
+                ->where('order.estimated_rate_card.name', 'Standard rates')
+                ->where('order.final_rate_card.name', 'Standard rates'));
     }
 }

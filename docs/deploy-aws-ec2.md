@@ -425,6 +425,14 @@ placed under: the migration stores each one's deadline, so the next midnight
 run cancels nothing early. Orders placed after the update get the limit set
 on **Site settings**.
 
+The first update with rate cards publishes the prices that were in
+`config/kotak.php` (RM 8.00 for the first kg, RM 2.00 for each further kg,
+volumetric divisor 5000) as the **Standard rates**, in effect from before the
+earliest order, and links every existing order to it. Prices stay the same
+until an admin publishes new rates on **Rates**. Nothing new runs on the
+scheduler: a scheduled card takes effect at its time when prices are next
+worked out.
+
 ## Logs
 
 Look here when the site shows 502, 500 or a blank page:

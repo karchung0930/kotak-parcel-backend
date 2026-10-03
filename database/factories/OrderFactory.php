@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\MalaysianState;
 use App\Enums\OrderStatus;
 use App\Models\Branch;
 use App\Models\DeliveryAttempt;
@@ -9,6 +10,8 @@ use App\Models\Order;
 use App\Models\Payment;
 use App\Models\User;
 use App\Support\PriceCalculator;
+use App\Support\PriceQuote;
+use App\Support\RateCards;
 use App\Support\TrackingNumber;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -28,13 +31,10 @@ class OrderFactory extends Factory
      */
     public function definition(): array
     {
-        $pricing = app(PriceCalculator::class);
-
         $declared = fake()->numberBetween(200, 15000);
         $length = fake()->numberBetween(10, 60);
         $width = fake()->numberBetween(10, 50);
         $height = fake()->numberBetween(5, 40);
-        $chargeable = $pricing->chargeableWeightGrams($declared, $length, $width, $height);
 
         return [
             'tracking_number' => TrackingNumber::generate(),
@@ -56,8 +56,10 @@ class OrderFactory extends Factory
             'length_cm' => $length,
             'width_cm' => $width,
             'height_cm' => $height,
-            'chargeable_weight_g' => $chargeable,
-            'estimated_price_sen' => $pricing->priceSen($chargeable),
+            // Priced with the current rate card, as CreateOrder does.
+            'chargeable_weight_g' => fn (array $attributes) => self::quote($attributes, $attributes['declared_weight_g'])->chargeableG,
+            'estimated_price_sen' => fn (array $attributes) => self::quote($attributes, $attributes['declared_weight_g'])->priceSen,
+            'estimated_rate_card_id' => fn (array $attributes) => self::quote($attributes, $attributes['declared_weight_g'])->rateCardId,
             // Fixed from the order time and the current limit, as CreateOrder does.
             'drop_off_deadline' => fn (array $attributes) => Order::dropOffDeadlineFor(
                 CarbonImmutable::parse($attributes['created_at'] ?? now()),
@@ -96,17 +98,14 @@ class OrderFactory extends Factory
     public function droppedOff(): static
     {
         return $this->state(function (array $attributes) {
-            $pricing = app(PriceCalculator::class);
             $measured = max(100, (int) $attributes['declared_weight_g'] + fake()->numberBetween(-100, 300));
-            $chargeable = $pricing->chargeableWeightGrams(
-                $measured, $attributes['length_cm'], $attributes['width_cm'], $attributes['height_cm'],
-            );
 
             return [
                 'status' => OrderStatus::DroppedOff,
                 'measured_weight_g' => $measured,
-                'chargeable_weight_g' => $chargeable,
-                'final_price_sen' => $pricing->priceSen($chargeable),
+                'chargeable_weight_g' => fn (array $attributes) => self::quote($attributes, $measured)->chargeableG,
+                'final_price_sen' => fn (array $attributes) => self::quote($attributes, $measured)->priceSen,
+                'final_rate_card_id' => fn (array $attributes) => self::quote($attributes, $measured)->rateCardId,
                 'dropped_off_at' => now(),
             ];
         });
@@ -197,6 +196,27 @@ class OrderFactory extends Factory
             'status' => OrderStatus::Cancelled,
             'cancelled_at' => now(),
         ]);
+    }
+
+    /**
+     * Price the parcel as the actions do: with the rate card in effect, on
+     * the route from the order's branch to its delivery address.
+     *
+     * @param  array<string, mixed>  $attributes  with branch_id, state and the box size
+     */
+    private static function quote(array $attributes, int $actualGrams): PriceQuote
+    {
+        $state = $attributes['state'];
+
+        return app(PriceCalculator::class)->quote(
+            app(RateCards::class)->current(),
+            Branch::query()->whereKey($attributes['branch_id'])->firstOrFail()->state,
+            $state instanceof MalaysianState ? $state : MalaysianState::from((string) $state),
+            $actualGrams,
+            (int) $attributes['length_cm'],
+            (int) $attributes['width_cm'],
+            (int) $attributes['height_cm'],
+        );
     }
 
     /**

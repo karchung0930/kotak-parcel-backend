@@ -14,6 +14,7 @@ use App\Http\Resources\OrderSummaryResource;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Support\PriceCalculator;
+use App\Support\RateCards;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -40,9 +41,10 @@ class OrderController extends Controller
     }
 
     /**
-     * Show the form for sending a parcel.
+     * Show the form for sending a parcel, with the current rate card for
+     * the live estimate from the chosen branch to the address.
      */
-    public function create(Request $request, PriceCalculator $pricing): Response
+    public function create(Request $request, PriceCalculator $pricing, RateCards $rateCards): Response
     {
         Gate::authorize('create', Order::class);
 
@@ -50,7 +52,7 @@ class OrderController extends Controller
 
         return Inertia::render('orders/Create', [
             'branches' => BranchResource::collection(Branch::query()->active()->orderBy('name')->get()),
-            'pricing' => $pricing->toArray(),
+            'pricing' => $pricing->publicRules($rateCards->current()),
             'states' => MalaysianState::options(),
             'sender' => ['name' => $customer->name, 'phone' => $customer->phone],
         ]);

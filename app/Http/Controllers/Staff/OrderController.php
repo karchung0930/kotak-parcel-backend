@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Staff;
 
 use App\Actions\Orders\CancelOrder;
 use App\Actions\Orders\RecordDropOff;
+use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\CancelOrderRequest;
@@ -11,7 +12,9 @@ use App\Http\Requests\Staff\DropOffRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\Order;
 use App\Support\PriceCalculator;
+use App\Support\RateCards;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -20,8 +23,12 @@ class OrderController extends Controller
 {
     /**
      * Show a parcel at the counter, ready to be weighed, paid for or cancelled.
+     *
+     * A parcel still to be weighed is priced live with the card in effect,
+     * from this counter's branch (as RecordDropOff will). A weighed parcel
+     * shows the card that set its final price, from where it was handed in.
      */
-    public function show(Order $order, PriceCalculator $pricing): Response
+    public function show(Request $request, Order $order, PriceCalculator $pricing, RateCards $rateCards): Response
     {
         Gate::authorize('view', $order);
 
@@ -33,11 +40,17 @@ class OrderController extends Controller
             'latestAttempt',
             'statusEvents.branch',
             'statusEvents.actor',
+            'estimatedRateCard',
+            'finalRateCard',
         ]);
+
+        $weighed = $order->final_rate_card_id !== null ? $rateCards->find($order->final_rate_card_id) : null;
+        $origin = $order->status === OrderStatus::Created ? ($request->user()->branch ?? $order->branch) : $order->branch;
 
         return Inertia::render('staff/OrderShow', [
             'order' => OrderResource::make($order),
-            'pricing' => $pricing->toArray(),
+            'pricing' => $pricing->rules($weighed ?? $rateCards->current()),
+            'origin' => $origin->state->value,
             'paymentMethods' => PaymentMethod::options(),
         ]);
     }

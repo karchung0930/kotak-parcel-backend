@@ -49,11 +49,26 @@ vendor/bin/phpstan analyse --memory-limit=1G   # PHP static analysis
 composer test                                  # config:clear, Pint, PHPStan, then the PHP tests
 ```
 
+Production runs MySQL 8.4, so run the tests on it too. Create an empty
+database; the tests migrate it themselves:
+
+```bash
+DB_CONNECTION=mysql DB_HOST=127.0.0.1 DB_PORT=3306 DB_DATABASE=kotak_testing \
+  DB_USERNAME=root DB_PASSWORD=secret php artisan test
+```
+
+The three query-plan tests read SQLite's query planner, so they skip
+themselves on MySQL.
+
 The PHP tests cover:
 
 - each role's access to its routes and records
 - every status transition, including the invalid ones
-- pricing
+- pricing: weight bands, routes between zones and volumetric weight, the
+  shared price cases the frontend checks too (read from the frontend's
+  `tests/js/fixtures`), and the first rate card matching the old formula
+- rate cards: drafts, publishing (with every problem listed), scheduling,
+  withdrawing, the cache, and which card prices each order
 - payments
 - proof-of-delivery privacy
 - the queued notifications

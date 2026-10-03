@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Orders;
 
+use App\Actions\Orders\CreateOrder;
 use App\Actions\Orders\RecordDropOff;
 use App\Enums\OrderStatus;
 use App\Exceptions\InvalidStatusTransition;
@@ -9,10 +10,12 @@ use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\CreatesRateCards;
 use Tests\TestCase;
 
 class RecordDropOffTest extends TestCase
 {
+    use CreatesRateCards;
     use RefreshDatabase;
 
     public function test_staff_weigh_the_parcel_and_set_the_final_price()
@@ -58,6 +61,41 @@ class RecordDropOffTest extends TestCase
         $updated = app(RecordDropOff::class)->handle($order, $admin, 1500);
 
         $this->assertSame($order->branch_id, $updated->branch_id);
+    }
+
+    public function test_the_final_price_uses_the_rates_in_effect_at_drop_off_from_the_counter_s_branch()
+    {
+        $kualaLumpur = Branch::factory()->create(['state' => 'Kuala Lumpur']);
+        $order = app(CreateOrder::class)->handle(User::factory()->create(), [
+            'branch_id' => $kualaLumpur->id,
+            'receiver_name' => 'Brian Teo',
+            'receiver_phone' => '+60131234510',
+            'address_line1' => 'Lot 7, Jalan Lintas',
+            'city' => 'Kota Kinabalu',
+            'state' => 'Sabah',
+            'postcode' => '88300',
+            'item_name' => 'Hiking boots',
+            'declared_weight_g' => 2300,
+            'length_cm' => 40, 'width_cm' => 30, 'height_cm' => 15,
+        ]);
+        $standardId = $order->estimated_rate_card_id;
+        // 3.6 kg by size, at RM 8.00 + 3 x RM 2.00 on the Standard rates.
+        $this->assertSame(1400, $order->estimated_price_sen);
+
+        $zoned = $this->zoneRates(now()->addDay());
+        $this->travel(2)->days();
+
+        // Handed in at a Sabah counter instead: Within Sabah & Labuan, 3.6 kg
+        // is 1 kg over the 3 kg band (RM 13.00 + RM 2.50).
+        $sabahCounter = Branch::factory()->create(['state' => 'Sabah', 'city' => 'Kota Kinabalu']);
+        $order = app(RecordDropOff::class)->handle($order, User::factory()->staff($sabahCounter)->create(), 2300);
+
+        $this->assertSame(3600, $order->chargeable_weight_g);
+        $this->assertSame(1550, $order->final_price_sen);
+        $this->assertSame($zoned->id, $order->final_rate_card_id);
+        // The online estimate keeps the rates it was given.
+        $this->assertSame($standardId, $order->estimated_rate_card_id);
+        $this->assertSame(1400, $order->estimated_price_sen);
     }
 
     public function test_a_parcel_can_only_be_dropped_off_once()

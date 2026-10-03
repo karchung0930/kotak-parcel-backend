@@ -12,13 +12,18 @@ use App\Actions\Orders\CreateOrder;
 use App\Actions\Orders\ExpireUnclaimedOrders;
 use App\Actions\Orders\RecordDropOff;
 use App\Actions\Payments\RecordPayment;
+use App\Actions\RateCards\CreateRateCardDraft;
+use App\Actions\RateCards\PublishRateCard;
+use App\Actions\RateCards\UpdateRateCardDraft;
 use App\Enums\DeliveryFailureReason;
 use App\Enums\MalaysianState;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Models\Branch;
 use App\Models\Order;
+use App\Models\RateCard;
 use App\Models\User;
+use App\Support\RateCards;
 use App\Support\Settings;
 use App\Support\TrackingNumber;
 use Carbon\CarbonImmutable;
@@ -30,7 +35,8 @@ use RuntimeException;
 
 /**
  * Demo data for local development and assessment: branches, staff, drivers,
- * customers and 24 orders in every status.
+ * customers, zone rates (with new rates scheduled) and 25 orders in every
+ * status.
  *
  * Orders are driven through the real Actions (with the clock moved back in
  * time), so their history, payments and delivery attempts are consistent.
@@ -71,6 +77,10 @@ class DemoSeeder extends Seeder
         private RecordDeliveryFailure $recordDeliveryFailure,
         private ReturnToSender $returnToSender,
         private ExpireUnclaimedOrders $expireUnclaimedOrders,
+        private CreateRateCardDraft $createRateCardDraft,
+        private UpdateRateCardDraft $updateRateCardDraft,
+        private PublishRateCard $publishRateCard,
+        private RateCards $rateCards,
     ) {}
 
     /**
@@ -90,15 +100,116 @@ class DemoSeeder extends Seeder
             $this->travelTo(30, '09:00');
             $this->seedBranches();
             $this->seedUsers();
+            $zoned = $this->seedZoneRates();
 
             foreach ($this->orders() as $i => $scenario) {
                 // Fixed tracking numbers (KT-00000002, KT-00000003, ...) so the demo can be followed from the README.
                 $scenario['tracking_number'] ??= sprintf('%s%08d', TrackingNumber::PREFIX, $i + 1);
                 $this->seedOrder($scenario);
             }
+
+            $this->seedScheduledRates($zoned);
         } finally {
             Date::setTestNow();
         }
+    }
+
+    /**
+     * Give the demo zone prices a few days ago, through the same actions as
+     * the Rates page. Within Peninsular Malaysia they are the old flat rates
+     * (RM 8.00 for the first kg, RM 2.00 per extra kg), so the sample parcel
+     * still costs RM 18.00; East Malaysia costs more, in weight bands.
+     *
+     * The migration's Standard rates were created and took effect when the
+     * database was migrated, after the start of the demo timeline, so they
+     * are moved back to before the first demo order. Orders placed before
+     * the zone prices keep the Standard rates, as real ones would.
+     */
+    private function seedZoneRates(): RateCard
+    {
+        $standard = RateCard::query()->published()->orderBy('id')->firstOrFail();
+        $start = $this->at(31, '00:00')->utc();
+        $standard->forceFill(['effective_from' => $start, 'published_at' => $start, 'created_at' => $start])->save();
+        $this->rateCards->refresh();
+
+        $this->travelTo(4, '00:00');
+        $draft = $this->createRateCardDraft->handle($this->admin);
+        $this->updateRateCardDraft->handle($draft, $this->zoneRates('Malaysia zone rates', eastSurchargeSen: 0));
+
+        return $this->publishRateCard->handle($draft, $this->admin);
+    }
+
+    /**
+     * Schedule higher East Malaysia prices from the 1st of next month, so the
+     * pricing page announces them. A copy of the zone rates, as an admin
+     * would make it.
+     */
+    private function seedScheduledRates(RateCard $zoned): void
+    {
+        $this->travelTo(0, '09:00');
+        $from = $this->now->setTimezone(config()->string('kotak.timezone'))->startOfMonth()->addMonth();
+
+        $draft = $this->createRateCardDraft->handle($this->admin, $zoned);
+        $this->updateRateCardDraft->handle($draft, $this->zoneRates('Rates from '.$from->format('j F Y'), eastSurchargeSen: 100));
+        $this->publishRateCard->handle($draft, $this->admin, $from->utc());
+    }
+
+    /**
+     * Three zones and every route between them. Within Peninsular Malaysia:
+     * one band up to 1 kg and a price per extra kg, which is the old flat
+     * formula. To, from and within East Malaysia: bands up to 0.5, 1, 2, 3
+     * and 5 kg, then a price per extra kg, with the surcharge on every band.
+     *
+     * @return array{name: string, volumetric_divisor: int, notes: string, zones: list<array{name: string, states: list<string>}>, routes: list<array{origin: int, destination: int, extra_kg_sen: int, bands: list<array{max_weight_g: int, price_sen: int}>}>}
+     */
+    private function zoneRates(string $name, int $eastSurchargeSen): array
+    {
+        $east = ['Sabah', 'Labuan', 'Sarawak'];
+        $peninsular = array_values(array_diff(array_column(MalaysianState::cases(), 'value'), $east));
+
+        // Band prices in sen for 0.5, 1, 2, 3 and 5 kg, then the price per extra kg.
+        $bands = fn (array $prices, int $extraKgSen): array => [
+            'extra_kg_sen' => $extraKgSen + intdiv($eastSurchargeSen, 2),
+            'bands' => array_map(fn (int $weight, int $price): array => [
+                'max_weight_g' => $weight,
+                'price_sen' => $price + $eastSurchargeSen,
+            ], [500, 1000, 2000, 3000, 5000], $prices),
+        ];
+
+        $peninsularToSabah = $bands([900, 1200, 1700, 2200, 3100], 500);
+        $peninsularToSarawak = $bands([900, 1150, 1600, 2050, 2900], 450);
+        $withinEast = $bands([800, 900, 1100, 1300, 1700], 250);
+        $acrossEast = $bands([850, 1000, 1300, 1600, 2200], 350);
+
+        // Zones by position: 0 Peninsular Malaysia, 1 Sabah & Labuan, 2 Sarawak.
+        $routes = [
+            [0, 0, ['extra_kg_sen' => 200, 'bands' => [['max_weight_g' => 1000, 'price_sen' => 800]]]],
+            [0, 1, $peninsularToSabah],
+            [0, 2, $peninsularToSarawak],
+            [1, 0, $peninsularToSabah],
+            [1, 1, $withinEast],
+            [1, 2, $acrossEast],
+            [2, 0, $peninsularToSarawak],
+            [2, 1, $acrossEast],
+            [2, 2, $withinEast],
+        ];
+
+        return [
+            'name' => $name,
+            'volumetric_divisor' => 5000,
+            'notes' => 'Peninsular prices as before. Sabah, Labuan and Sarawak priced by weight band.',
+            'zones' => [
+                ['name' => 'Peninsular Malaysia', 'states' => $peninsular],
+                ['name' => 'Sabah & Labuan', 'states' => ['Sabah', 'Labuan']],
+                ['name' => 'Sarawak', 'states' => ['Sarawak']],
+            ],
+            'routes' => array_values(array_map(fn (array $route): array => [
+                'origin' => $route[0],
+                'destination' => $route[1],
+                'extra_kg_sen' => (int) $route[2]['extra_kg_sen'],
+                'bands' => $route[2]['bands'],
+            ], $routes)),
+        ];
     }
 
     /**
@@ -469,6 +580,12 @@ class DemoSeeder extends Seeder
                 'customer' => 'aisyah', 'branch' => 'KL-MVC', 'status' => OrderStatus::Cancelled, 'days_ago' => 12,
                 'expired' => true,
                 'order' => $this->parcel('Nurul Ain Zakaria', '+60193344552', '17, Jalan Wangsa 2/3', 'Wangsa Maju', 'Kuala Lumpur', MalaysianState::KualaLumpur, '53300', 'Wall clock', 1300, 35, 35, 8),
+            ],
+            // To East Malaysia on the zone rates: 1.75 kg by size, priced in the 2 kg band.
+            [
+                'customer' => 'jason', 'branch' => 'KL-BSR', 'status' => OrderStatus::Paid, 'days_ago' => 1,
+                'payment' => PaymentMethod::Card,
+                'order' => $this->parcel('Jessica Ling', '+60168123456', 'Lot 12, Jalan Song', 'Taman Song Thian Cheok', 'Kuching', MalaysianState::Sarawak, '93350', 'Batik cushion covers', 1600, 35, 25, 10),
             ],
         ];
     }

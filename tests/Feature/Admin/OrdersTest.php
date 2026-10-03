@@ -189,6 +189,9 @@ class OrdersTest extends TestCase
                 ->has('order.delivery_attempts.0.driver')
                 ->has('order.status_events', 6)
                 ->where('order.failed_attempts', 1)
+                // Which rate card priced the estimate and the final price.
+                ->where('order.estimated_rate_card', ['id' => $order->estimated_rate_card_id, 'name' => 'Standard rates'])
+                ->where('order.final_rate_card', ['id' => $order->final_rate_card_id, 'name' => 'Standard rates'])
                 ->where('maxFailedAttempts', 3));
     }
 

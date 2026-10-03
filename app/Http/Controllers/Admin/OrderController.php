@@ -85,6 +85,8 @@ class OrderController extends Controller
             'deliveryAttempts.driver',
             'statusEvents.branch',
             'statusEvents.actor',
+            'estimatedRateCard',
+            'finalRateCard',
         ])->loadCount('failedAttempts');
 
         return Inertia::render('admin/orders/Show', [

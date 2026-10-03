@@ -3,10 +3,13 @@
 namespace Tests\Feature;
 
 use App\Enums\OrderStatus;
+use App\Enums\RateCardPhase;
 use App\Models\Branch;
 use App\Models\Order;
+use App\Models\RateCard;
 use App\Models\User;
 use App\Rules\MalaysianPhone;
+use App\Support\RateCards;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -61,6 +64,53 @@ class DemoSeederTest extends TestCase
         $this->assertSame(
             today('Asia/Kuala_Lumpur')->addDays(2)->toDateString(),
             Order::byTrackingNumber('KT-00000022')->firstOrFail()->dropOffDeadline()?->toDateString(),
+        );
+    }
+
+    public function test_it_seeds_zone_rates_with_new_rates_scheduled_and_orders_priced_by_them()
+    {
+        Notification::fake();
+        Storage::fake('local');
+
+        $this->seed(DemoSeeder::class);
+
+        $rateCards = app(RateCards::class);
+        $this->assertSame('Malaysia zone rates', $rateCards->current()->name);
+        $this->assertSame(['Peninsular Malaysia', 'Sabah & Labuan', 'Sarawak'], array_column($rateCards->current()->zones, 'name'));
+        $standard = RateCard::query()->orderBy('id')->firstOrFail();
+        $this->assertSame('Standard rates', $standard->name);
+        $this->assertSame(RateCardPhase::Past, $standard->phase());
+        // Moved back with the demo timeline: created, published and saved before the first demo order.
+        $this->assertSame($standard->effective_from?->toDateTimeString(), $standard->created_at?->toDateTimeString());
+        $this->assertGreaterThanOrEqual($standard->created_at?->toDateTimeString(), $standard->updated_at?->toDateTimeString());
+        $this->assertLessThanOrEqual(Order::query()->min('created_at'), $standard->created_at?->toDateTimeString());
+
+        // New East Malaysia rates from the 1st of next month, Malaysia time.
+        $upcoming = $rateCards->upcoming();
+        $nextMonth = now('Asia/Kuala_Lumpur')->startOfMonth()->addMonth();
+        $this->assertSame('Rates from '.$nextMonth->format('j F Y'), $upcoming?->name);
+        $this->assertSame($nextMonth->utc()->toIso8601ZuluString(), $upcoming->effectiveFrom?->toIso8601ZuluString());
+
+        // Within Peninsular Malaysia the zone rates are the old flat rates, so the sample still costs RM 18.00.
+        $sample = Order::byTrackingNumber('KT-7Q4M92XD')->firstOrFail();
+        $this->assertSame(1800, $sample->final_price_sen);
+        $this->assertSame($rateCards->current()->id, $sample->final_rate_card_id);
+
+        // To Kuching: 1.75 kg by size, in the 2 kg band from Peninsular Malaysia to Sarawak.
+        $kuching = Order::byTrackingNumber('KT-00000025')->firstOrFail();
+        $this->assertSame(OrderStatus::Paid, $kuching->status);
+        $this->assertSame(1750, $kuching->chargeable_weight_g);
+        $this->assertSame(1600, $kuching->final_price_sen);
+        $this->assertSame($rateCards->current()->id, $kuching->final_rate_card_id);
+
+        // Older orders kept the Standard rates they were priced with.
+        $this->assertSame('Standard rates', Order::byTrackingNumber('KT-00000012')->firstOrFail()->finalRateCard?->name);
+
+        // Every order has its estimate's rates, and a final price's rates exactly when it has a final price.
+        $this->assertSame(0, Order::query()->whereNull('estimated_rate_card_id')->count());
+        $this->assertSame(
+            Order::query()->whereNotNull('final_price_sen')->orderBy('id')->pluck('id')->all(),
+            Order::query()->whereNotNull('final_rate_card_id')->orderBy('id')->pluck('id')->all(),
         );
     }
 

@@ -55,7 +55,9 @@ class CreateOrderTest extends TestCase
         $this->assertSame(MalaysianState::KualaLumpur, $order->state);
         $this->assertSame(6000, $order->chargeable_weight_g);
         $this->assertSame(1800, $order->estimated_price_sen);
+        $this->assertSame('Standard rates', $order->estimatedRateCard?->name);
         $this->assertNull($order->final_price_sen);
+        $this->assertNull($order->final_rate_card_id);
 
         $event = $order->statusEvents()->sole();
         $this->assertNull($event->from_status);

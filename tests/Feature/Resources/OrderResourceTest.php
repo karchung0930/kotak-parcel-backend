@@ -29,6 +29,9 @@ class OrderResourceTest extends TestCase
         $this->assertArrayNotHasKey('payment', $bare);
         $this->assertArrayNotHasKey('status_events', $bare);
         $this->assertArrayNotHasKey('customer', $bare);
+        // Customers are not told which rate card priced their order.
+        $this->assertArrayNotHasKey('estimated_rate_card', $bare);
+        $this->assertArrayNotHasKey('final_rate_card', $bare);
 
         $loaded = (new OrderResource(
             $order->fresh(['branch', 'payment.receivedBy', 'statusEvents.branch', 'latestAttempt'])->loadCount('failedAttempts'),

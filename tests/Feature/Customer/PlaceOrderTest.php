@@ -9,13 +9,16 @@ use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\PriceCalculator;
+use App\Support\RateCards;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Tests\Concerns\CreatesRateCards;
 use Tests\TestCase;
 
 class PlaceOrderTest extends TestCase
 {
+    use CreatesRateCards;
     use RefreshDatabase;
 
     private User $customer;
@@ -72,7 +75,7 @@ class PlaceOrderTest extends TestCase
                 ->where('branches.0.id', $this->branch->id)
                 ->has('states', count(MalaysianState::cases()))
                 ->where('states.0', ['value' => 'Johor', 'label' => 'Johor'])
-                ->where('pricing', app(PriceCalculator::class)->toArray())
+                ->where('pricing', app(PriceCalculator::class)->publicRules(app(RateCards::class)->current()))
                 ->where('sender', ['name' => 'Aisyah Rahman', 'phone' => '+60123456789']));
     }
 
@@ -129,12 +132,39 @@ class PlaceOrderTest extends TestCase
             ]))
             ->assertSessionHasNoErrors();
 
-        $pricing = app(PriceCalculator::class);
-        $chargeable = $pricing->chargeableWeightGrams($weight, $length, $width, $height);
+        $quote = app(PriceCalculator::class)->quote(
+            app(RateCards::class)->current(), $this->branch->state, MalaysianState::KualaLumpur, $weight, $length, $width, $height,
+        );
         $order = Order::query()->sole();
 
-        $this->assertSame($chargeable, $order->chargeable_weight_g);
-        $this->assertSame($pricing->priceSen($chargeable), $order->estimated_price_sen);
+        $this->assertSame($quote->chargeableG, $order->chargeable_weight_g);
+        $this->assertSame($quote->priceSen, $order->estimated_price_sen);
+        $this->assertSame($quote->rateCardId, $order->estimated_rate_card_id);
+    }
+
+    public function test_the_estimate_runs_from_the_chosen_branch_to_the_receiver_s_state()
+    {
+        $card = $this->zoneRates();
+
+        $this->actingAs($this->customer)
+            ->post(route('orders.store'), $this->input([
+                'state' => 'Sabah',
+                'city' => 'Kota Kinabalu',
+                'postcode' => '88300',
+                'declared_weight_g' => 1600,
+                'length_cm' => 35,
+                'width_cm' => 25,
+                'height_cm' => 10,
+            ]))
+            ->assertSessionHasNoErrors();
+
+        $order = Order::query()->sole();
+
+        // Peninsular Malaysia to Sabah & Labuan: 1.75 kg by size is in the 2 kg band.
+        $this->assertSame(1750, $order->chargeable_weight_g);
+        $this->assertSame(1700, $order->estimated_price_sen);
+        $this->assertSame($card->id, $order->estimated_rate_card_id);
+        $this->assertNull($order->final_rate_card_id);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\Order;
+use App\Models\RateCard;
 use Illuminate\Http\Request;
 
 /**
@@ -37,6 +38,9 @@ class OrderResource extends OrderSummaryResource
             'paid_at' => $this->paid_at?->toIso8601ZuluString(),
             'delivered_at' => $this->delivered_at?->toIso8601ZuluString(),
             'cancelled_at' => $this->cancelled_at?->toIso8601ZuluString(),
+            // The rate cards that priced the estimate and the final price: staff and admin views only.
+            'estimated_rate_card' => $this->whenLoaded('estimatedRateCard', fn (RateCard $card): array => ['id' => $card->id, 'name' => $card->name]),
+            'final_rate_card' => $this->whenLoaded('finalRateCard', fn (RateCard $card): array => ['id' => $card->id, 'name' => $card->name]),
             'branch' => BranchResource::make($this->whenLoaded('branch')),
             'payment' => PaymentResource::make($this->whenLoaded('payment')),
             'delivery_attempts' => DeliveryAttemptResource::collection($this->whenLoaded('deliveryAttempts')),

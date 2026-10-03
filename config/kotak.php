@@ -16,25 +16,13 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Pricing
-    |--------------------------------------------------------------------------
-    |
-    | Money is stored in sen (RM 1.00 = 100 sen) and weight in grams. The
-    | chargeable weight is the greater of the actual and volumetric weight,
-    | where volumetric kg = length x width x height (cm) / divisor.
-    |
-    */
-
-    'volumetric_divisor' => 5000,
-
-    'base_price_sen' => 800,
-
-    'per_kg_sen' => 200,
-
-    /*
-    |--------------------------------------------------------------------------
     | Parcel Limits
     |--------------------------------------------------------------------------
+    |
+    | Weight is stored in grams and money in sen (RM 1.00 = 100 sen). The
+    | prices themselves are rate cards, which admins publish on the Rates
+    | page (see App\Support\RateCards).
+    |
     */
 
     'max_weight_g' => 30000,

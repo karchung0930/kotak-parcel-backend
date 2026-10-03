@@ -47,6 +47,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $chargeable_weight_g
  * @property int $estimated_price_sen
  * @property int|null $final_price_sen
+ * @property int|null $estimated_rate_card_id
+ * @property int|null $final_rate_card_id
  * @property int|null $driver_id
  * @property CarbonInterface|null $scheduled_for
  * @property CarbonInterface|null $drop_off_deadline
@@ -135,6 +137,26 @@ class Order extends Model
     public function driver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'driver_id');
+    }
+
+    /**
+     * The rate card that priced the online estimate.
+     *
+     * @return BelongsTo<RateCard, $this>
+     */
+    public function estimatedRateCard(): BelongsTo
+    {
+        return $this->belongsTo(RateCard::class, 'estimated_rate_card_id');
+    }
+
+    /**
+     * The rate card that set the final price when the parcel was weighed.
+     *
+     * @return BelongsTo<RateCard, $this>
+     */
+    public function finalRateCard(): BelongsTo
+    {
+        return $this->belongsTo(RateCard::class, 'final_rate_card_id');
     }
 
     /**

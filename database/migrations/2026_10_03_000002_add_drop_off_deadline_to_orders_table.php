@@ -25,8 +25,16 @@ return new class extends Migration
             $table->timestamp('drop_off_reminded_at')->nullable()->after('drop_off_deadline');
         });
 
-        // Orders waiting for drop-off were placed under the old limit, so they
-        // keep it: nothing is cancelled earlier than it would have been.
+        $this->keepPreviousLimitForWaitingOrders();
+    }
+
+    /**
+     * Fill in the deadline of the orders waiting for drop-off. They were
+     * placed under the old limit, so they keep it: nothing is cancelled
+     * earlier than it would have been.
+     */
+    public function keepPreviousLimitForWaitingOrders(): void
+    {
         DB::table('orders')
             ->where('status', 'created')
             ->select(['id', 'created_at'])
