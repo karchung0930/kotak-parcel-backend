@@ -131,14 +131,20 @@ class Settings
     }
 
     /**
-     * Read every saved value from the database, by key.
+     * Read every saved value from the database, by key, in the order of
+     * LIMITS: databases return rows in different orders, and the cached
+     * array should be the same on all of them.
      *
      * @return array<string, mixed>
      */
     private function load(): array
     {
-        return Setting::query()->get()
-            ->mapWithKeys(fn (Setting $setting): array => [$setting->key => $setting->value])
+        $saved = Setting::query()->get()
+            ->mapWithKeys(fn (Setting $setting): array => [$setting->key => $setting->value]);
+
+        return collect(array_keys(self::LIMITS))
+            ->filter(fn (string $key): bool => $saved->has($key))
+            ->mapWithKeys(fn (string $key): array => [$key => $saved->get($key)])
             ->all();
     }
 }

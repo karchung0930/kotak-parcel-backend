@@ -68,7 +68,7 @@ class SettingsTest extends TestCase
         $this->assertSame(12, $settings->unclaimedOrderDays());
 
         // Without a refresh, the cached values last ten minutes.
-        Setting::query()->whereKey('unclaimed_order_days')->update(['value' => 20]);
+        Setting::query()->findOrFail('unclaimed_order_days')->forceFill(['value' => 20])->save();
         $this->app->forgetScopedInstances();
         $this->assertSame(12, app(Settings::class)->unclaimedOrderDays());
 
