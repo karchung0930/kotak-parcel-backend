@@ -13,7 +13,7 @@ use Carbon\CarbonInterface;
  * Days are Malaysian calendar days from the order day, the way the limit
  * counts them: an order placed on Monday and dropped off on Tuesday took
  * one day, whatever the hours. They are worked out in PHP from created_at
- * and dropped_off_at, so the numbers are the same on SQLite and MySQL.
+ * and dropped_off_at, so no database date functions are involved.
  */
 class DropOffTiming
 {

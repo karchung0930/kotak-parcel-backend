@@ -97,7 +97,8 @@ EOF
         printf '[client]\nuser=root\npassword=%s\n' "$root_pass" | sudo tee /root/.my.cnf >/dev/null
         sudo chmod 600 /root/.my.cnf
     fi
-    if ! grep -q '^DB_CONNECTION=mysql' .env; then
+    # A new .env still has the local development password from .env.example.
+    if grep -q '^DB_PASSWORD=secret$' .env; then
         local db_pass
         db_pass="$(php -r 'echo bin2hex(random_bytes(16));')Aa1_"
         sudo mysql <<SQL

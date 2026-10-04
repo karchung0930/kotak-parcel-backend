@@ -12,9 +12,9 @@ class KeyNamesTest extends TestCase
 
     /**
      * MySQL refuses identifiers over 64 characters, and the names Laravel
-     * makes up for keys on several columns pass that easily. SQLite accepts
-     * them, so this catches a long name before a MySQL migration fails.
-     * (SQLite does not keep foreign key names; MySQL checks those itself.)
+     * makes up for keys on several columns pass that easily. On MySQL the
+     * migration itself fails; this test states the rule, and also catches a
+     * long name on a database that accepts one.
      */
     public function test_every_index_and_foreign_key_name_fits_in_mysql()
     {

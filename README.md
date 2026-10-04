@@ -61,7 +61,8 @@ enter any number below.
 The demo data also has six Klang Valley branches and 25 orders in every
 status. Try tracking the sample parcel **`KT-7Q4M92XD`**: a 4.2 kg ceramic
 dinner set from Aisyah Rahman to Daniel Lim in Taman Tun Dr Ismail, out for
-delivery today.
+delivery today. On your own machine, `php artisan db:seed --class=DemoSeeder`
+loads the same data (see [Running it locally](#running-it-locally)).
 
 It also has three versions of the rates (admin **Rates**): the Standard
 rates that older orders were priced with, the zone rates in effect since a
@@ -135,8 +136,9 @@ A parcel can weigh up to 30 kg, with each side up to 150 cm
 
 - **Backend**: PHP 8.3+, Laravel 13, Laravel Fortify (login, registration,
   email verification, two-factor codes, passkeys), Inertia 3.
-- **Database**: SQLite for local development and tests. MySQL 8.4 in
-  production.
+- **Database**: MySQL 8.4 LTS everywhere: in production, for local
+  development (Docker, [`compose.yaml`](compose.yaml)), and for the tests
+  locally and in CI.
 - **Frontend**: Vue 3.5 `<script setup>` with TypeScript and Tailwind CSS 4.
   UI components are shadcn-vue on reka-ui, with lucide icons.
 - **Routing**: Wayfinder generates typed route and form helpers, so no URL is
@@ -319,7 +321,7 @@ Each falls back to its default in `config/kotak.php` until it is saved:
   within the current limit, orders cancelled as unclaimed, and the orders
   waiting now. Days are Malaysian calendar days from the order day, the way
   the limit counts them. It is worked out in PHP from `created_at` and
-  `dropped_off_at`, so SQLite and MySQL give the same numbers.
+  `dropped_off_at`, without database date functions.
 
 The scheduler runs two jobs, both in Malaysia time and never overlapping:
 
@@ -419,8 +421,23 @@ Actions write only values they computed themselves, never raw request input.
 
 ## Running it locally
 
-[docs/local-development.md](docs/local-development.md) covers running the
-site on your own machine, the demo data and the tests.
+You need PHP 8.3+ (with `pdo_mysql` and `fileinfo`), Composer 2, Node 22.18+
+(or 24.11+) and Docker. MySQL 8.4, the version production runs, comes from
+[`compose.yaml`](compose.yaml) for both development and the tests. Run these
+in this folder, with kotak-parcel-frontend cloned next to it, because the
+tests check its pages (set `FRONTEND_PATH` in `.env` if it lives elsewhere):
+
+```bash
+cp .env.example .env                     # port 3306 taken? set DB_PORT and FORWARD_DB_PORT in .env now
+docker compose up -d --wait              # MySQL 8.4 with the kotak and kotak_testing databases
+composer setup                           # composer install, app key, migrations
+php artisan db:seed --class=DemoSeeder   # the demo accounts and orders above
+composer test                            # Pint, PHPStan and the PHP tests, on MySQL
+```
+
+[docs/local-development.md](docs/local-development.md) covers the frontend
+build, the queue, email and scheduler, stopping and resetting the database,
+and the tests.
 
 ## Deployment
 
@@ -444,10 +461,9 @@ update script are in [`deploy/`](deploy).
   demo is a short-lived showcase, so [`deploy/install.sh`](deploy/install.sh)
   seeds it once with `--env=staging`. A real installation skips the seeder and
   creates its first admin with `php artisan kotak:create-admin`.
-- **Database**: MySQL 8.4 LTS (`DB_CONNECTION=mysql`) or MariaDB 10.11
-  (`DB_CONNECTION=mariadb`), utf8mb4. Everything is stored in UTC, and
-  `config/kotak.php` sets the business time zone (Asia/Kuala_Lumpur) for
-  "today" and the schedule.
+- **Database**: MySQL 8.4 LTS (`DB_CONNECTION=mysql`), utf8mb4, the version
+  the tests run on. Everything is stored in UTC, and `config/kotak.php` sets
+  the business time zone (Asia/Kuala_Lumpur) for "today" and the schedule.
 - **HTTPS**: serve only over HTTPS and set `SESSION_SECURE_COOKIE=true`. HSTS
   is sent automatically on secure requests. Behind a load balancer, configure
   the trusted proxies so Laravel sees HTTPS.

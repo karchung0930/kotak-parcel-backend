@@ -1,64 +1,139 @@
 # Running Kotak locally
 
-Two ways to run the site on your own machine: straight on PHP and Node
-(quickest for editing), or in a Docker container that mirrors the EC2 server.
-Both load the demo accounts and orders listed in the
+The site runs on PHP and Node on your own machine. MySQL 8.4, the version
+production runs, comes from Docker, for development and for the tests alike.
+The demo data has the accounts and orders listed in the
 [README](../README.md#demo_accounts).
 
-## Option A: PHP and Node on your machine
+## Setup
 
-You need PHP 8.3+ (with the `pdo_sqlite` and `fileinfo` extensions), Composer
-2 and Node 22.12+. Clone both repositories into the same folder:
+You need PHP 8.3+ (with the `pdo_mysql` and `fileinfo` extensions), Composer
+2, Node 22.18+ (or 24.11+) and Docker Desktop (on Linux, Docker Engine with
+the Compose plugin is enough). Clone both repositories into the same folder:
 
 ```bash
 git clone https://github.com/karchung0930/kotak-parcel-backend.git
 git clone https://github.com/karchung0930/kotak-parcel-frontend.git
 
 cd kotak-parcel-backend
-composer setup                   # composer install, .env, app key, SQLite migrations
-php artisan db:seed              # the demo accounts and orders listed in the README
+cp .env.example .env                     # port 3306 taken? set DB_PORT and FORWARD_DB_PORT in .env now
+docker compose up -d --wait              # MySQL 8.4 on 127.0.0.1:3306
+composer setup                           # composer install, app key, migrations
+php artisan db:seed --class=DemoSeeder   # the demo accounts and orders listed in the README
 
 cd ../kotak-parcel-frontend
-npm install
-npm run build                    # or npm run dev while editing the pages
+npm ci                                   # the exact versions in package-lock.json
+npm run build                            # while editing the pages, run npm run dev in a second terminal instead
 
 cd ../kotak-parcel-backend
-composer run dev                 # http://localhost:8000, a queue listener and the logs
+composer run dev                         # http://localhost:8000 and a queue listener
 ```
 
+- **Database.** [`compose.yaml`](../compose.yaml) runs one MySQL 8.4
+  container and keeps its data in a Docker volume. It reads `DB_DATABASE`,
+  `DB_USERNAME` and `DB_PASSWORD` from `.env`, which is why `.env` comes
+  first. On its first start it creates that database and user, and the
+  `kotak_testing` database the tests use. It only listens on 127.0.0.1.
+  Start it before `composer setup`, which runs the migrations. If port 3306
+  is taken, set `DB_PORT` and `FORWARD_DB_PORT` to the same free port in
+  `.env` before the first `docker compose up`.
 - **Queue.** `composer run dev` already runs `php artisan queue:listen`.
   Without it, run `php artisan queue:work` yourself, or status emails stay in
-  the `jobs` table. Locally, emails are written to `storage/logs/laravel.log`
-  (`MAIL_MAILER=log`).
+  the `jobs` table. The first `composer run dev` fetches its process runner
+  through npx (`concurrently` on Windows, `@laravel/multiplex` on macOS and
+  Linux), so it needs network access, and npx may ask you to confirm.
+- **Email.** Locally, emails are written to `storage/logs/laravel.log`
+  (`MAIL_MAILER=log`). Follow it with `tail -f storage/logs/laravel.log`
+  (`Get-Content storage/logs/laravel.log -Wait` in PowerShell). Where PHP
+  has the `pcntl` extension, usually on macOS and Linux, `composer run dev`
+  shows the log too, through Pail. Mail addressed only to `.test`
+  addresses, which includes every demo account, is skipped because those
+  domains cannot exist. To read the demo emails, set
+  `MAIL_TO_ADDRESS=you@example.com` in `.env`: every email then goes to that
+  address and appears in the log. Or register your own account.
 - **Scheduler.** It is only needed for the 9:00 drop-off reminders and the
   nightly clean-up of unclaimed orders. Run `php artisan schedule:work` in
   another terminal, or call the jobs directly with
   `php artisan orders:remind-unclaimed` and `php artisan orders:expire-unclaimed`.
 - **Wayfinder.** The Vite plugin regenerates the route helpers. If they are
-  missing, run `php artisan wayfinder:generate --with-form`.
+  missing, run `npm run build` in the frontend, or from the frontend folder:
+  `php ../kotak-parcel-backend/artisan wayfinder:generate --with-form --path=resources/js`.
 - **Photos** go to the private disk, so `storage:link` is not needed.
 
+A clone set up when the project still used SQLite has `DB_CONNECTION=sqlite`
+in its `.env`. Replace its `DB_*` lines with the ones in `.env.example`, then
+run `docker compose up -d --wait` and
+`php artisan migrate --seed --seeder=DemoSeeder`. The old
+`database/database.sqlite` is no longer used.
+
+### Stopping and resetting the database
+
+```bash
+docker compose stop                      # stop MySQL; the data stays in the volume
+docker compose up -d --wait              # start it again
+
+# A MySQL prompt as the app user (the password is DB_PASSWORD in .env)
+docker compose exec mysql mysql -ukotak -p kotak
+
+# Fresh tables and demo data, in the same volume
+php artisan migrate:fresh --seed --seeder=DemoSeeder
+
+# Start from nothing: remove the container and the volume with all its data,
+# then create them again with fresh tables and demo data
+docker compose down -v
+docker compose up -d --wait
+php artisan migrate --seed --seeder=DemoSeeder
+```
+
+The database name, user and password are set when the volume is created
+(root uses the same password). After changing `DB_DATABASE`, `DB_USERNAME`
+or `DB_PASSWORD` in `.env`, `docker compose up -d --wait` reports the
+container as unhealthy until you start from nothing as above. A new
+`FORWARD_DB_PORT` only needs `docker compose up -d --wait`, which recreates
+the container and keeps the volume.
+
+If the tests say `kotak_testing` does not exist, the volume was created
+without it. Start from nothing, or keep the data and run the set-up script
+again:
+
+```bash
+docker compose exec mysql sh -c 'bash /docker-entrypoint-initdb.d/10-create-testing-database.sh'
+```
 
 ## Tests
 
 ```bash
-php artisan test                               # PHPUnit feature and unit tests (SQLite in memory)
+php artisan test                               # PHPUnit feature and unit tests
 vendor/bin/pint --test                         # PHP code style
 vendor/bin/phpstan analyse --memory-limit=1G   # PHP static analysis
 
 composer test                                  # config:clear, Pint, PHPStan, then the PHP tests
 ```
 
-Production runs MySQL 8.4, so run the tests on it too. Create an empty
-database; the tests migrate it themselves:
+The tests run on MySQL 8.4 too, in the `kotak_testing` database
+(`phpunit.xml`), so start the container first. They empty and migrate that
+database themselves and never touch `kotak`: PHPUnit stops before the first
+test if the database name does not end in `_testing`. It also stops if the
+config is cached, because the cached values would replace `phpunit.xml`. Run
+`php artisan config:clear` first; `composer test` does this for you.
+
+The host, port, user and password come from `.env`. Environment variables
+override them, which is how the CI workflow points the tests at its MySQL
+service. The database name stays `kotak_testing` whatever the environment
+says. For example, to run the tests on another MySQL that listens on port
+3307, in bash:
 
 ```bash
-DB_CONNECTION=mysql DB_HOST=127.0.0.1 DB_PORT=3306 DB_DATABASE=kotak_testing \
-  DB_USERNAME=root DB_PASSWORD=secret php artisan test
+DB_PORT=3307 php artisan test
 ```
 
-The three query-plan tests read SQLite's query planner, so they skip
-themselves on MySQL.
+In PowerShell, run `$env:DB_PORT=3307` first; it stays set until you close
+that window.
+
+If MySQL is not running or refuses the login, PHPUnit stops before the first
+test and says what to check. The suite takes about a minute and a half with
+Docker Desktop on Windows or macOS, where every query crosses into Docker's
+virtual machine, and less on Linux.
 
 The PHP tests cover:
 
@@ -74,10 +149,13 @@ The PHP tests cover:
 - the queued notifications
 - the site settings, the drop-off timing figures and the reminder job
 - rate limits and security headers
+- the indexes behind the busiest pages (MySQL's `EXPLAIN` on a month of
+  orders)
 - the demo seeder
 
 The feature tests assert the Inertia page and props each screen receives,
 and fail if the page component is missing from the frontend repository. The
 frontend has its own checks (types, lint, format, helpers and the build); see
 its README. GitHub Actions runs both on every push, each with the other
-repository checked out beside it.
+repository checked out beside it; the backend's tests run against a MySQL 8.4
+service container.

@@ -175,7 +175,8 @@ unset TMP ROOT_PASS
 ```
 
 Create the database and a user with a random password (the `Aa1_` ending meets
-MySQL's password rules), and write it into `.env`:
+MySQL's password rules), and write them into `.env` in place of the local
+development values from `.env.example`:
 
 ```sh
 DB_PASS="$(php -r 'echo bin2hex(random_bytes(16));')Aa1_"
