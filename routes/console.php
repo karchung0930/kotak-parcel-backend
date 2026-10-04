@@ -2,6 +2,7 @@
 
 use App\Actions\Orders\ExpireUnclaimedOrders;
 use App\Actions\Orders\SendDropOffReminders;
+use App\Actions\RateImports\PruneRateImportFiles;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -18,6 +19,10 @@ Artisan::command('orders:remind-unclaimed', function (SendDropOffReminders $remi
     $this->info("Queued {$remind->handle()} drop-off reminder(s).");
 })->purpose('Remind customers to drop off orders that will soon be cancelled');
 
+Artisan::command('rates:prune-imports', function (PruneRateImportFiles $prune) {
+    $this->info("Deleted {$prune->handle()} rate import file(s).");
+})->purpose('Delete uploaded rate spreadsheets older than a week');
+
 // Runs at midnight Malaysia time.
 Schedule::command('orders:expire-unclaimed')
     ->daily()
@@ -27,5 +32,11 @@ Schedule::command('orders:expire-unclaimed')
 // Runs at 9am Malaysia time, when branches are opening.
 Schedule::command('orders:remind-unclaimed')
     ->dailyAt('09:00')
+    ->timezone(config()->string('kotak.timezone'))
+    ->withoutOverlapping();
+
+// Runs at 3am Malaysia time, when nobody is likely to be importing rates.
+Schedule::command('rates:prune-imports')
+    ->dailyAt('03:00')
     ->timezone(config()->string('kotak.timezone'))
     ->withoutOverlapping();

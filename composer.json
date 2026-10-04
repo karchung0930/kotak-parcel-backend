@@ -17,6 +17,7 @@
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
+        "openspout/openspout": "^5.3",
         "propaganistas/laravel-phone": "^6.0"
     },
     "require-dev": {

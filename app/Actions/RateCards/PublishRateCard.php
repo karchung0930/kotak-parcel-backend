@@ -248,7 +248,7 @@ class PublishRateCard
     /**
      * Write a weight in kg for messages: 500 → "0.5 kg", 30000 → "30 kg".
      */
-    private static function kg(int $grams): string
+    public static function kg(int|float $grams): string
     {
         return rtrim(rtrim(number_format($grams / 1000, 3, '.', ''), '0'), '.').' kg';
     }

@@ -7,9 +7,10 @@ The demo data has the accounts and orders listed in the
 
 ## Setup
 
-You need PHP 8.3+ (with the `pdo_mysql` and `fileinfo` extensions), Composer
-2, Node 22.18+ (or 24.11+) and Docker Desktop (on Linux, Docker Engine with
-the Compose plugin is enough). Clone both repositories into the same folder:
+You need PHP 8.3+ (with the `pdo_mysql`, `fileinfo`, `zip` and `xml`
+extensions; the last two read and write Excel files), Composer 2, Node 22.18+
+(or 24.11+) and Docker Desktop (on Linux, Docker Engine with the Compose
+plugin is enough). Clone both repositories into the same folder:
 
 ```bash
 git clone https://github.com/karchung0930/kotak-parcel-backend.git
@@ -39,9 +40,10 @@ composer run dev                         # http://localhost:8000 and a queue lis
   `.env` before the first `docker compose up`.
 - **Queue.** `composer run dev` already runs `php artisan queue:listen`.
   Without it, run `php artisan queue:work` yourself, or status emails stay in
-  the `jobs` table. The first `composer run dev` fetches its process runner
-  through npx (`concurrently` on Windows, `@laravel/multiplex` on macOS and
-  Linux), so it needs network access, and npx may ask you to confirm.
+  the `jobs` table and rate imports wait at Uploaded. The first
+  `composer run dev` fetches its process runner through npx (`concurrently`
+  on Windows, `@laravel/multiplex` on macOS and Linux), so it needs network
+  access, and npx may ask you to confirm.
 - **Email.** Locally, emails are written to `storage/logs/laravel.log`
   (`MAIL_MAILER=log`). Follow it with `tail -f storage/logs/laravel.log`
   (`Get-Content storage/logs/laravel.log -Wait` in PowerShell). Where PHP
@@ -51,14 +53,22 @@ composer run dev                         # http://localhost:8000 and a queue lis
   domains cannot exist. To read the demo emails, set
   `MAIL_TO_ADDRESS=you@example.com` in `.env`: every email then goes to that
   address and appears in the log. Or register your own account.
-- **Scheduler.** It is only needed for the 9:00 drop-off reminders and the
-  nightly clean-up of unclaimed orders. Run `php artisan schedule:work` in
-  another terminal, or call the jobs directly with
-  `php artisan orders:remind-unclaimed` and `php artisan orders:expire-unclaimed`.
+- **Scheduler.** It is only needed for the 9:00 drop-off reminders, the
+  nightly clean-up of unclaimed orders and the deletion of uploaded rate
+  spreadsheets after a week. Run `php artisan schedule:work` in another
+  terminal, or call the jobs directly with
+  `php artisan orders:remind-unclaimed`, `php artisan orders:expire-unclaimed`
+  and `php artisan rates:prune-imports`.
 - **Wayfinder.** The Vite plugin regenerates the route helpers. If they are
   missing, run `npm run build` in the frontend, or from the frontend folder:
   `php ../kotak-parcel-backend/artisan wayfinder:generate --with-form --path=resources/js`.
-- **Photos** go to the private disk, so `storage:link` is not needed.
+- **Photos and uploaded rate spreadsheets** go to the private disk, so
+  `storage:link` is not needed.
+- **Upload size.** Rate spreadsheets may be up to 5 MB, but PHP accepts 2 MB
+  by default. Set `upload_max_filesize = 8M` and `post_max_size = 8M` in the
+  `php.ini` that `php --ini` names, as the server does in
+  [the deployment guide](deploy-aws-ec2.md). Otherwise a file over 2 MB is
+  refused as not uploaded.
 
 A clone set up when the project still used SQLite has `DB_CONNECTION=sqlite`
 in its `.env`. Replace its `DB_*` lines with the ones in `.env.example`, then
@@ -144,6 +154,10 @@ The PHP tests cover:
   `tests/js/fixtures`), and the first rate card matching the old formula
 - rate cards: drafts, publishing (with every problem listed), scheduling,
   withdrawing, the cache, and which card prices each order
+- rate imports and downloads, with workbooks and CSV files written in the
+  tests: finding the layout and units, every kind of problem and the cap at
+  200, the draft made in one transaction, downloads read back as the same
+  card, formula escaping, the jobs' steps and the daily file clean-up
 - payments
 - proof-of-delivery privacy
 - the queued notifications

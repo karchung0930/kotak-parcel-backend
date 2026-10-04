@@ -108,8 +108,9 @@ sudo mkdir -p $APP_ROOT
 sudo chown ec2-user:apache $APP_ROOT
 ```
 
-Raise the upload limit to 8 MB (delivery photos), shrink the PHP-FPM pool, and
-make PHP-FPM create group-writable files:
+Raise the upload limit to 8 MB (delivery photos and rate spreadsheets, both
+at most 5 MB), shrink the PHP-FPM pool, and make PHP-FPM create
+group-writable files:
 
 ```sh
 sudo sed -i -e 's/^upload_max_filesize = .*/upload_max_filesize = 8M/' \
@@ -273,10 +274,11 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost/up
 
 ## 10. Queue worker and scheduler
 
-Install and start the worker (status and reminder emails) and the scheduler
-timer. The timer runs `php artisan schedule:run` every minute, which sends
-the drop-off reminders at 9:00 and cancels unclaimed orders at midnight,
-Malaysia time:
+Install and start the worker (status and reminder emails, and reading and
+checking rate imports) and the scheduler timer. The timer runs
+`php artisan schedule:run` every minute, which sends the drop-off reminders at
+9:00, cancels unclaimed orders at midnight and deletes uploaded rate
+spreadsheets older than a week at 3:00, Malaysia time:
 
 ```sh
 sudo cp $BACKEND/deploy/systemd/kotak-* /etc/systemd/system/
@@ -433,6 +435,12 @@ earliest order, and links every existing order to it. Prices stay the same
 until an admin publishes new rates on **Rates**. Nothing new runs on the
 scheduler: a scheduled card takes effect at its time when prices are next
 worked out.
+
+The first update with rate imports adds the `rate_imports` table and the
+OpenSpout package, which needs the `zip` and `xml` extensions installed in
+step 2. Imports are read and checked by the queue worker that is already
+running, and the existing scheduler timer deletes uploaded files after a week
+(`rates:prune-imports`, 3:00), so there is nothing new to install or start.
 
 ## Logs
 

@@ -32,8 +32,9 @@ password **`password`**. Each role only sees its own screens:
 - **Staff**: the drop-off counter at their branch (weigh, confirm the price,
   take payment, print the receipt).
 - **Admin**: Dispatch (assign a driver and a date), all orders, users,
-  branches, rates (versioned price lists by zone and weight) and site
-  settings (drop-off limit, reminders, delivery attempts).
+  branches, rates (versioned price lists by zone and weight, imported from
+  and downloaded as Excel or CSV) and site settings (drop-off limit,
+  reminders, delivery attempts).
 - **Driver**: today's jobs, pick up, deliver with a photo or report a failed
   delivery.
 
@@ -68,7 +69,9 @@ It also has three versions of the rates (admin **Rates**): the Standard
 rates that older orders were priced with, the zone rates in effect since a
 few days ago (Peninsular Malaysia, Sabah & Labuan, Sarawak), and higher East
 Malaysia rates scheduled for the 1st of next month, which the pricing page
-announces.
+announces. **Download template** on Rates gives the current rates as an Excel
+workbook; change a few prices and bring it back with **Import** to see a
+spreadsheet become a draft.
 
 | Status             | Tracking numbers                                                          | Try it as                                                                                         |
 | ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -113,7 +116,7 @@ Laravel application, with the same boundaries (see
 | Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                  |
 | Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                     |
 | Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires                                                                                        |
-| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards), `admin/Settings` (with drop-off timing)                                                                                  |
+| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards, imported from and downloaded as spreadsheets in `admin/rates/imports`), `admin/Settings` (with drop-off timing)           |
 
 **Pricing** comes from the rate card in effect (see
 [Rate cards](#rate-cards)). The chargeable weight is the greater of:
@@ -135,7 +138,8 @@ A parcel can weigh up to 30 kg, with each side up to 150 cm
 ## Stack
 
 - **Backend**: PHP 8.3+, Laravel 13, Laravel Fortify (login, registration,
-  email verification, two-factor codes, passkeys), Inertia 3.
+  email verification, two-factor codes, passkeys), Inertia 3, OpenSpout
+  (Excel and CSV files, read and written as streams).
 - **Database**: MySQL 8.4 LTS everywhere: in production, for local
   development (Docker, [`compose.yaml`](compose.yaml)), and for the tests
   locally and in CI.
@@ -179,17 +183,17 @@ database. A small courier doesn't need network calls, a message broker and six
 databases to run this. The module boundaries are kept, so a busy module (most
 likely Tracking) can be split out later.
 
-| Module       | Backend                                                                                                                                                                      | Screens                                     |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`                                                             | auth, settings, admin users                 |
-| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `TrackingNumber`, `OrderPolicy`, `DropOffTiming`                                                           | Send a parcel, My parcels, counter weighing |
-| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                                                                 | counter payment, receipt                    |
-| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`                                                     | Dispatch, My jobs                           |
-| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                                                           | Track                                       |
-| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`                                                                                 | email                                       |
-| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                                                         | Branches, admin branches                    |
-| Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                                                        | Site settings                               |
-| Pricing      | `RateCard` (with its zones, routes and bands), `RateCards`, `PriceList`, `PriceCalculator`, `PriceQuote`, `Actions/RateCards/*`, `RateCardPolicy`, `Admin\RateCardController` | Pricing, admin Rates                        |
+| Module       | Backend                                                                                                                                                                                                                                                                                                                                                                                             | Screens                                     |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`                                                                                                                                                                                                                                                                                    | auth, settings, admin users                 |
+| Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `TrackingNumber`, `OrderPolicy`, `DropOffTiming`                                                                                                                                                                                                                                                                                  | Send a parcel, My parcels, counter weighing |
+| Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                                                                                                                                                                                                                                                                                        | counter payment, receipt                    |
+| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`                                                                                                                                                                                                                                                                            | Dispatch, My jobs                           |
+| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                                                                                                                                                                                                                                                                                  | Track                                       |
+| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`                                                                                                                                                                                                                                                                                                        | email                                       |
+| Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                                                                                                                                                                                                                                                                                | Branches, admin branches                    |
+| Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                                                                                                                                                                                                                                                                               | Site settings                               |
+| Pricing      | `RateCard` (with its zones, routes and bands), `RateCards`, `PriceList`, `PriceCalculator`, `PriceQuote`, `Actions/RateCards/*`, `RateCardPolicy`, `Admin\RateCardController`; spreadsheets: `RateImport`, `Actions/RateImports/*`, the `ParseRateImport` and `ValidateRateImport` jobs, `Support/RateSheets/*`, `RateImportPolicy`, `Admin\RateImportController`, `Admin\RateCardExportController` | Pricing, admin Rates, Import rates          |
 
 - **Controllers stay thin.** Each business step is a single-purpose action
   class (`app/Actions/*`). Controllers authorise, validate through a Form
@@ -282,6 +286,87 @@ throughout.
   earliest order and every existing order points at it, so no seeder is
   needed in production.
 
+### Importing and downloading rates
+
+Admins can bring prices in from a spreadsheet (**Import rates**,
+`admin/rates/imports`) and download any version as one. Files are read and
+written with OpenSpout, which streams them, so even a large file takes a few
+MB of memory.
+
+1. **Upload** an `.xlsx` or `.csv` file of at most 5 MB, and choose the
+   version whose zones the prices use (the current rates by default). The
+   extension and the type detected from the content must agree, and an
+   `.xlsx` file must be a zip archive with a workbook in it that does not
+   unpack to far more than a sheet of prices. The file goes on the private
+   disk under a random name, and the import (`rate_imports`) is _uploaded_.
+2. **Read** (`ParseRateImport`, on the queue): the sheet names, the first rows
+   and the sheet's size. The first sheet with anything in it is read, unless
+   the admin picks another. The headings row is looked for in the first 20
+   rows, with one of two layouts (`LayoutDetector`):
+   - **A row per weight band**: origin, destination, max weight and price
+     columns, found by their headings in any case and position ("From zone",
+     "To", "Max. weight (g)", "Rate (sen)", or Malay words such as "Dari",
+     "Ke", "Berat" and "Harga"). A row whose weight says "Each additional
+     kg" or "Per kg" gives the route's price per extra kg.
+   - **Weights by route**: weights down a column and a heading for each
+     route, such as "Peninsular → Sabah & Labuan", "West - East" or "Within
+     Sarawak". `ZoneMatcher` matches each side to a zone of the base card: by
+     code or name, by a state in it ("Labuan"), by a common name for one side
+     of Malaysia ("West", "Semenanjung"), by part of its name, or by a close
+     spelling. The row marked "Each additional kg" holds the prices per
+     extra kg, and a box saying "n/a" (or "-") means the route has no band
+     at that weight.
+
+   Units come from the headings ("(g)", "RM", "sen"), else from the numbers:
+   weights above the limit in kg must be grams, and whole prices of 100 or
+   more are sen. A unit typed in a cell ("500 g", "RM 9.50") is used for that
+   cell. A comma only groups thousands ("1,200"), except in a CSV file
+   separated by semicolons, as Excel saves one where decimals are written
+   with a comma: there "8,50" is RM 8.50. The import then _needs mapping_.
+3. **Check the columns**: the page shows the first rows with their column
+   letters and row numbers, and the suggested layout, headings row, units and
+   the column (or route) of each value, for the admin to change and confirm.
+   While a job is working, the page asks the server again every two seconds
+   (Inertia's `usePoll`), and stops when the job is done.
+4. **Check every row** (`ValidateRateImport`, on the queue, with
+   `RateSheetParser`): weights to grams and prices to sen, and every problem
+   with its row and column: missing values (an empty box in weights by
+   route included) or values that are not numbers, zones the base card does
+   not have, the same band twice, prices that go down as the weight goes up,
+   a price per extra kg for another step than 1 kg ("Per 0.5 kg"), weights
+   above the limit, zone pairs without prices, and routes without bands,
+   without a price per extra kg or with more than 30 bands. Equal prices on
+   two bands are fine, as when publishing, so every version that can be
+   published (and downloaded) imports back. The first 200 problems are kept
+   with the total, and the import _failed_: the page lists them, takes a
+   fixed file and lets the columns be changed. Without problems it is
+   _ready_, and the page shows the prices as a rate card's route cards.
+5. **Create the draft** (`CreateDraftFromRateImport`): the base card's zones
+   and divisor with the file's routes and bands, through the same
+   `CreateRateCardDraft` action that copies a version. This is the first
+   write to the rate card tables, in one transaction with marking the import
+   _applied_. The draft is published like any other. If it is deleted, the
+   import can make it again.
+
+Each step re-reads the import under a row lock and checks it is still in the
+right state, so a second click or a page gone stale is told why. A job's
+result is only saved if the import still waits for it with the same mapping.
+
+**Downloads.** Any version downloads as an `.xlsx` workbook with three sheets
+(Rates, a row per band; Matrix, weights by route, with "n/a" where a route
+has no band; Zones, the states in each) or as a `.csv` file of the Rates
+sheet (`ExportRateCard`). Weights are in kg and prices in ringgit, and a
+download imports back as the same prices. The
+Rates page offers the current rates' workbook as the template. Text starting
+with `=`, `+`, `-`, `@`, a tab or a carriage return gets an apostrophe in
+front, so a spreadsheet program never runs it as a formula; the import
+removes it again.
+
+**Clean-up.** `rates:prune-imports` deletes uploaded files after 7 days. The
+import stays with the prices checked, so a checked file can still become a
+draft. The rows shown from the file and the problems found, which quote its
+cells, go with it.
+
 ### Events after commit, notifications on the queue
 
 - `OrderStatusChanged` implements `ShouldDispatchAfterCommit`. Listeners only
@@ -323,12 +408,13 @@ Each falls back to its default in `config/kotak.php` until it is saved:
   the limit counts them. It is worked out in PHP from `created_at` and
   `dropped_off_at`, without database date functions.
 
-The scheduler runs two jobs, both in Malaysia time and never overlapping:
+The scheduler runs three jobs, all in Malaysia time and never overlapping:
 
 | Command                   | When  | What it does                                                                                                         |
 | ------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
 | `orders:remind-unclaimed` | 09:00 | Emails a `DropOffReminder` from `drop_off_reminder_days_before` days before the order's deadline day                 |
 | `orders:expire-unclaimed` | 00:00 | Cancels orders still not dropped off once their deadline day has ended (`ExpireUnclaimedOrders`, `Order::unclaimed`) |
+| `rates:prune-imports`     | 03:00 | Deletes uploaded rate spreadsheets older than 7 days (`PruneRateImportFiles`)                                        |
 
 - Each reminder locks the order and sets `drop_off_reminded_at` in one
   transaction before the email is queued, so a second or overlapping run
@@ -393,6 +479,26 @@ Actions write only values they computed themselves, never raw request input.
 - Card payments keep only the terminal's approval code (4 to 12 letters and
   digits), never a card number.
 
+**Uploaded spreadsheets**
+
+- Only admins import rates, and each admin can upload, change the sheet or
+  confirm columns 10 times a minute. A file must be `.xlsx` or `.csv`, at
+  most 5 MB, and its content must be the type its extension says. An
+  `.xlsx` file must hold a workbook and unpack to at most 50 MB, with no
+  large part more than 100 times its packed size.
+- Files are stored under random names on the private disk
+  (`storage/app/private/rate-imports`), never served back, and deleted
+  after 7 days, with the rows shown from them and the problems found.
+- They are only read as data: no formula is run (the value Excel saved is
+  used). A workbook may have 50 sheets, named in up to 100 characters, and
+  only the first 10 are tried for one with prices. Each read stops early:
+  after 1,000 empty rows in a row, after just over 10,000 rows when the file
+  is read, and after 10,000 rows of prices when it is checked. A row is read
+  up to 257 columns. Problems quote at most 40 characters of a cell, and the
+  preview 80.
+- Downloads escape text that a spreadsheet program would run as a formula
+  (starting with `=`, `+`, `-`, `@`, a tab or a carriage return).
+
 **Proof-of-delivery photos**
 
 - Photos must be JPEG, PNG or WebP images of at most 5 MB.
@@ -421,7 +527,7 @@ Actions write only values they computed themselves, never raw request input.
 
 ## Running it locally
 
-You need PHP 8.3+ (with `pdo_mysql` and `fileinfo`), Composer 2, Node 22.18+
+You need PHP 8.3+ (with `pdo_mysql`, `fileinfo`, `zip` and `xml`), Composer 2, Node 22.18+
 (or 24.11+) and Docker. MySQL 8.4, the version production runs, comes from
 [`compose.yaml`](compose.yaml) for both development and the tests. Run these
 in this folder, with kotak-parcel-frontend cloned next to it, because the
@@ -468,15 +574,19 @@ update script are in [`deploy/`](deploy).
   is sent automatically on secure requests. Behind a load balancer, configure
   the trusted proxies so Laravel sees HTTPS.
 - **Queue worker**: keep `php artisan queue:work --tries=3` running under
-  Supervisor or systemd. Run `php artisan queue:restart` on each deploy. The
+  Supervisor or systemd. It sends the emails, and reads and checks rate
+  imports. Run `php artisan queue:restart` on each deploy. The
   `database` queue is fine to start with; Redis is the step up.
 - **Scheduler**: run `php artisan schedule:run` every minute (a systemd timer
   in [`deploy/systemd`](deploy/systemd), or cron). It sends drop-off
-  reminders at 9:00 and cancels unclaimed orders at midnight, Malaysia time.
-- **Private storage**: proof-of-delivery photos live in `storage/app/private`,
-  outside the web root. Back it up with the database. With more than one web
-  server, move the photos to a private S3-compatible bucket; only the disk
-  name in `RecordDeliverySuccess` and `ProofOfDeliveryController` changes.
+  reminders at 9:00, cancels unclaimed orders at midnight and deletes
+  uploaded rate spreadsheets older than a week at 3:00, Malaysia time.
+- **Private storage**: proof-of-delivery photos and uploaded rate
+  spreadsheets live in `storage/app/private`, outside the web root. Back it
+  up with the database. With more than one web server, move the photos to a
+  private S3-compatible bucket; only the disk name in `RecordDeliverySuccess`
+  and `ProofOfDeliveryController` changes. The queue worker reads uploaded
+  spreadsheets from the same disk, so they need shared storage too.
 - **Mail**: set a real mailer, for example Amazon SES through
   `MAIL_MAILER=smtp` (no extra package), and `MAIL_FROM_ADDRESS` on a domain
   with SPF and DKIM set up. Status and reminder emails only go out while the

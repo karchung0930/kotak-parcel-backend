@@ -24,7 +24,12 @@ class UpdateRateCardRequest extends FormRequest
     /**
      * The most a price can be, in sen (RM 10,000.00).
      */
-    private const MAX_PRICE_SEN = 1_000_000;
+    public const MAX_PRICE_SEN = 1_000_000;
+
+    /**
+     * The most weight bands a route can have.
+     */
+    public const MAX_BANDS = 30;
 
     /**
      * The volumetric divisors allowed. Couriers use 4000 to 6000; the
@@ -77,7 +82,7 @@ class UpdateRateCardRequest extends FormRequest
             'routes.*.origin' => ['required', 'integer', Rule::in($zoneIndexes)],
             'routes.*.destination' => ['required', 'integer', Rule::in($zoneIndexes)],
             'routes.*.extra_kg_sen' => ['nullable', ...$price],
-            'routes.*.bands' => ['present', 'list', 'max:30'],
+            'routes.*.bands' => ['present', 'list', 'max:'.self::MAX_BANDS],
             'routes.*.bands.*' => ['array:max_weight_g,price_sen'],
             'routes.*.bands.*.max_weight_g' => ['required', 'integer', 'between:1,'.config()->integer('kotak.max_weight_g')],
             'routes.*.bands.*.price_sen' => ['required', ...$price],
@@ -173,7 +178,7 @@ class UpdateRateCardRequest extends FormRequest
             'routes.*.origin.*' => 'Choose a zone from the list.',
             'routes.*.destination.*' => 'Choose a zone from the list.',
             'routes.*.extra_kg_sen.*' => 'Enter a price from RM 0.00 to RM 10,000.00.',
-            'routes.*.bands.max' => 'Use at most 30 weight bands.',
+            'routes.*.bands.max' => 'Use at most '.self::MAX_BANDS.' weight bands.',
             'routes.*.bands.*.max_weight_g.*' => "Enter a weight above 0 and up to {$maxKg} kg.",
             'routes.*.bands.*.price_sen.*' => 'Enter a price from RM 0.00 to RM 10,000.00.',
         ];

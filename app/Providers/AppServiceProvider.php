@@ -80,6 +80,9 @@ class AppServiceProvider extends ServiceProvider
 
         // Order creation, per customer.
         RateLimiter::for('orders', fn (Request $request) => Limit::perMinute(10)->by($request->user()?->id ?: $request->ip()));
+
+        // Rate imports: each upload, sheet or mapping keeps a file or queues a job, per admin.
+        RateLimiter::for('rate-imports', fn (Request $request) => Limit::perMinute(10)->by($request->user()?->id ?: $request->ip()));
     }
 
     /**
