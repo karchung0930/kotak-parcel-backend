@@ -17,7 +17,6 @@ use App\Models\DeliveryAttempt;
 use App\Models\Order;
 use App\Models\User;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -38,18 +37,9 @@ class JobController extends Controller
         $day = $request->day();
 
         $jobs = Order::query()
-            ->forDriver($driver)
-            ->activeJobs()
-            ->when(
-                $day->isToday(),
-                fn (Builder $jobs) => $jobs->scheduledBefore($day->addDay()),
-                fn (Builder $jobs) => $jobs->scheduledOn($day),
-            )
+            ->jobListFor($driver, $day)
             ->with('branch')
             ->withCount('failedAttempts')
-            ->orderBy('scheduled_for')
-            ->orderBy('postcode')
-            ->orderBy('id')
             ->get();
 
         return Inertia::render('driver/Jobs', [

@@ -3,6 +3,7 @@
 namespace App\Actions\Delivery;
 
 use App\Enums\OrderStatus;
+use App\Events\DeliveryAssigned;
 use App\Exceptions\InvalidStatusTransition;
 use App\Models\Order;
 use App\Models\User;
@@ -25,7 +26,8 @@ class AssignDriver
     /**
      * Schedule a paid parcel with an active driver, reschedule a failed
      * delivery, or reassign a delivery to another driver or day before the
-     * driver collects it.
+     * driver collects it. Once committed, DeliveryAssigned lets the drivers
+     * whose run changed know.
      *
      * @throws ValidationException
      * @throws InvalidStatusTransition
@@ -64,13 +66,22 @@ class AssignDriver
                 ]);
             }
 
-            return $this->statuses->transition(
+            // The run the delivery is on now, read under the lock before it changes.
+            // A failed delivery is on nobody's run: that job ended with the attempt.
+            $previousDriver = $order->status === OrderStatus::Assigned ? $order->driver : null;
+            $previousDate = $previousDriver !== null ? $order->scheduled_for : null;
+
+            $order = $this->statuses->transition(
                 $order,
                 OrderStatus::Assigned,
                 $admin,
                 $this->note($order, $scheduledFor, $sameDay),
                 ['driver_id' => $driver->id, 'scheduled_for' => $scheduledFor->toDateString()],
             );
+
+            DeliveryAssigned::dispatch($order, $driver, $previousDriver, $previousDate);
+
+            return $order;
         });
     }
 

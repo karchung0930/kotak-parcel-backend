@@ -240,7 +240,8 @@ cd $BACKEND
 sudo -u apache bash -c 'umask 0002 && php artisan db:seed --env=staging --force'
 ```
 
-Drop the ~90 status emails the seeder queued, so they are never sent:
+Drop the ~115 emails the seeder queued (status updates and drivers' new
+jobs), so they are never sent:
 
 ```sh
 cd $BACKEND
@@ -274,11 +275,12 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost/up
 
 ## 10. Queue worker and scheduler
 
-Install and start the worker (status and reminder emails, and reading and
-checking rate imports) and the scheduler timer. The timer runs
-`php artisan schedule:run` every minute, which sends the drop-off reminders at
-9:00, cancels unclaimed orders at midnight and deletes uploaded rate
-spreadsheets older than a week at 3:00, Malaysia time:
+Install and start the worker (status, reminder and driver emails, and
+reading and checking rate imports) and the scheduler timer. The timer runs
+`php artisan schedule:run` every minute, which emails drivers their run sheets
+at 7:00, sends the drop-off reminders at 9:00, cancels unclaimed orders at
+midnight and deletes uploaded rate spreadsheets older than a week at 3:00,
+Malaysia time:
 
 ```sh
 sudo cp $BACKEND/deploy/systemd/kotak-* /etc/systemd/system/
@@ -442,6 +444,12 @@ step 2. Imports are read and checked by the queue worker that is already
 running, and the existing scheduler timer deletes uploaded files after a week
 (`rates:prune-imports`, 3:00), so there is nothing new to install or start.
 
+The first update with driver emails needs no migration. The emails about new,
+moved and removed jobs go through the queue worker that is already running,
+and the existing scheduler timer sends the morning run sheets
+(`drivers:send-run-sheets`, 7:00), so again there is nothing new to install
+or start.
+
 ## Logs
 
 Look here when the site shows 502, 500 or a blank page:
@@ -456,7 +464,7 @@ sudo journalctl -u kotak-worker -n 50 --no-pager
 ## Reset the demo data
 
 Empty the database and seed again. The worker is stopped meanwhile so the
-seeded status emails are dropped instead of sent, and `deploy.sh` removes the
+seeded emails are dropped instead of sent, and `deploy.sh` removes the
 dev packages, so they are reinstalled first:
 
 ```sh

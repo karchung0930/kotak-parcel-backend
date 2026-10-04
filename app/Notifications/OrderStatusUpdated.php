@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\MailDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -54,7 +55,7 @@ class OrderStatusUpdated extends Notification implements ShouldQueue
         if ($this->status === OrderStatus::Assigned && $this->order->scheduled_for) {
             $mail->line(
                 ($this->rescheduled ? 'New delivery date: ' : 'Scheduled delivery date: ')
-                .$this->order->scheduled_for->format('l, j F Y').'.',
+                .MailDate::long($this->order->scheduled_for).'.',
             );
         }
 

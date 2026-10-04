@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Str;
 
 /**
  * A parcel delivery order. Its status only ever changes through
@@ -230,6 +231,27 @@ class Order extends Model
     }
 
     /**
+     * Get where the parcel goes without the street, e.g. "Petaling Jaya 47300"
+     * as My jobs heads each stop, for places that must not show the full
+     * address, such as driver emails.
+     *
+     * The city is the customer's own text, so this is always one line of
+     * plain text, without the characters that Markdown or an HTML table would
+     * read as markup ([ ] < > |). New orders cannot have them
+     * (StoreOrderRequest); this also covers older ones, and does not rely on
+     * how the mail views were compiled (see AppServiceProvider::configureMail()).
+     *
+     * The postcode is joined to the town's last word by a no-break space, so
+     * a narrow screen never leaves it alone on a line.
+     */
+    public function deliveryArea(): string
+    {
+        $area = Str::squish(str_replace(['[', ']', '<', '>', '|'], ' ', "{$this->city} {$this->postcode}"));
+
+        return Str::replaceLast(' ', "\u{00A0}", $area);
+    }
+
+    /**
      * Determine if the order was placed by the given user.
      */
     public function isOwnedBy(User $user): bool
@@ -369,6 +391,33 @@ class Order extends Model
     protected function activeJobs(Builder $query): void
     {
         $query->whereIn('status', OrderStatus::activeJobs());
+    }
+
+    /**
+     * Scope a query to the driver's open deliveries for a Malaysian day, in
+     * the order My jobs lists them. Today's list also carries over the jobs
+     * left open on earlier days, which come first as they are the oldest.
+     *
+     * The morning run sheet (App\Notifications\DriverRunSheet) emails the same list.
+     *
+     * The day is compared by its date with today in Malaysia, so a day made
+     * in another timezone, such as UTC midnight, still counts as today.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function jobListFor(Builder $query, User $driver, CarbonInterface $day): void
+    {
+        $query->forDriver($driver)
+            ->activeJobs()
+            ->when(
+                $day->toDateString() === today(config()->string('kotak.timezone'))->toDateString(),
+                fn (Builder $jobs) => $jobs->scheduledBefore($day->toImmutable()->addDay()),
+                fn (Builder $jobs) => $jobs->scheduledOn($day),
+            )
+            ->orderBy('scheduled_for')
+            ->orderBy('postcode')
+            ->orderBy('id');
     }
 
     /**

@@ -130,4 +130,23 @@ return [
         'name' => env('MAIL_TO_NAME', 'Kotak demo'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Markdown Mail Theme
+    |--------------------------------------------------------------------------
+    |
+    | Notification emails keep Laravel's layout in Kotak's colours
+    | (resources/views/vendor/mail/html/themes/kotak.css). The same folder
+    | holds the run sheet's job table (html/ and text/job-table.blade.php).
+    |
+    */
+
+    'markdown' => [
+        'theme' => env('MAIL_MARKDOWN_THEME', 'kotak'),
+
+        'paths' => [
+            resource_path('views/vendor/mail'),
+        ],
+    ],
+
 ];

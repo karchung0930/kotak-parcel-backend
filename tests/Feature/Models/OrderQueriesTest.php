@@ -73,6 +73,33 @@ class OrderQueriesTest extends TestCase
         );
     }
 
+    public function test_todays_job_list_carries_over_open_jobs_whatever_timezone_the_day_is_in()
+    {
+        // Half past midnight in Kuala Lumpur, still the day before in UTC.
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 00:30', 'Asia/Kuala_Lumpur'));
+        $driver = User::factory()->driver()->create();
+        $overdue = Order::factory()->assigned($driver)->create(['scheduled_for' => '2026-10-02']);
+        $today = Order::factory()->assigned($driver)->create(['scheduled_for' => '2026-10-05']);
+        Order::factory()->assigned($driver)->create(['scheduled_for' => '2026-10-06']);
+
+        foreach ([CarbonImmutable::parse('2026-10-05', 'Asia/Kuala_Lumpur'), CarbonImmutable::parse('2026-10-05', 'UTC')] as $day) {
+            $this->assertSame([$overdue->id, $today->id], Order::jobListFor($driver, $day)->pluck('id')->all(), $day->toIso8601String());
+        }
+
+        // Another day lists only its own jobs.
+        $this->assertSame([], Order::jobListFor($driver, CarbonImmutable::parse('2026-10-04', 'UTC'))->pluck('id')->all());
+    }
+
+    public function test_the_delivery_area_is_one_line_of_plain_text()
+    {
+        $area = fn (string $city) => (new Order)->forceFill(['city' => $city, 'postcode' => '50450'])->deliveryArea();
+
+        // The postcode stays with the town's last word.
+        $this->assertSame("Kuala Lumpur\u{00A0}50450", $area('Kuala Lumpur'));
+        // From an order placed before the city was checked for these characters.
+        $this->assertSame("Kuala Lumpur Sign in (https://example.com) b\u{00A0}50450", $area("Kuala | Lumpur\n[Sign in](https://example.com) <b>"));
+    }
+
     public function test_customers_list_their_own_orders()
     {
         $customer = User::factory()->create();

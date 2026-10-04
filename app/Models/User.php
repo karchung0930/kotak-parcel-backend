@@ -146,6 +146,30 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     }
 
     /**
+     * Determine if the user may be sent email about their work: an active
+     * account with a verified address, as for customers' drop-off reminders.
+     *
+     * Accounts an admin creates are verified from the start
+     * (Admin\UserController::store), so for staff and drivers this only holds
+     * email back after they change their address, until they confirm the new one.
+     */
+    public function canBeEmailed(): bool
+    {
+        return $this->is_active && $this->hasVerifiedEmail();
+    }
+
+    /**
+     * Scope a query to users who may be sent email about their work (see canBeEmailed()).
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function emailable(Builder $query): void
+    {
+        $query->where('is_active', true)->whereNotNull('email_verified_at');
+    }
+
+    /**
      * Scope a query to active users.
      *
      * @param  Builder<self>  $query

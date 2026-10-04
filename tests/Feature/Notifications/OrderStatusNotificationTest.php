@@ -14,6 +14,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Notifications\OrderStatusUpdated;
 use App\Services\OrderStatusService;
+use App\Support\MailDate;
 use Illuminate\Events\CallQueuedListener;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -133,7 +134,7 @@ class OrderStatusNotificationTest extends TestCase
                 && $notification->rescheduled
                 && $mail->subject === "Parcel {$notification->order->formatted_tracking_number}: Delivery Rescheduled"
                 && in_array('Your delivery has been moved to a new date.', $mail->introLines, true)
-                && in_array('New delivery date: '.$newDate->format('l, j F Y').'.', $mail->introLines, true);
+                && in_array('New delivery date: '.MailDate::long($newDate).'.', $mail->introLines, true);
         });
         Notification::assertSentTimes(OrderStatusUpdated::class, 1);
     }
@@ -147,9 +148,10 @@ class OrderStatusNotificationTest extends TestCase
             $order, User::factory()->admin()->create(), User::factory()->driver()->create(), today(config()->string('kotak.timezone')),
         );
 
-        // Recorded in the history, but the customer's delivery day did not change.
+        // Recorded in the history, but the customer's delivery day did not change (the drivers are told).
         $this->assertStringStartsWith('Reassigned to another driver', (string) $order->latestStatusEvent()->firstOrFail()->note);
-        Notification::assertNothingSent();
+        Notification::assertNotSentTo($order->customer, OrderStatusUpdated::class);
+        Notification::assertSentTimes(OrderStatusUpdated::class, 0);
     }
 
     public function test_the_email_names_the_status_explains_it_and_links_to_public_tracking()
@@ -175,7 +177,7 @@ class OrderStatusNotificationTest extends TestCase
 
         $mail = (new OrderStatusUpdated($order, OrderStatus::Assigned))->toMail($order->customer);
 
-        $this->assertContains('Scheduled delivery date: Thursday, 1 October 2026.', $mail->introLines);
+        $this->assertContains("Scheduled delivery date: Thursday, 1\u{00A0}October\u{00A0}2026.", $mail->introLines);
     }
 
     public function test_the_email_is_delivered_to_the_customer_address()

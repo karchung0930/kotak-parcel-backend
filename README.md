@@ -36,7 +36,7 @@ password **`password`**. Each role only sees its own screens:
   and downloaded as Excel or CSV) and site settings (drop-off limit,
   reminders, delivery attempts).
 - **Driver**: today's jobs, pick up, deliver with a photo or report a failed
-  delivery.
+  delivery. New jobs and a run sheet every morning also arrive by email.
 
 Tracking needs no account: open <https://dataflows.karchung.dev/track> and
 enter any number below.
@@ -111,7 +111,7 @@ Laravel application, with the same boundaries (see
 | Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                                                                                     |
 | Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                 |
 | Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline |
-| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_                                                                                                                                                                                      |
+| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_. The driver is emailed the job, a driver it is taken from is told, and every driver with jobs gets a run sheet at 7:00 (`drivers:send-run-sheets`)                                   |
 | Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                           |
 | Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                  |
 | Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                     |
@@ -190,7 +190,7 @@ likely Tracking) can be split out later.
 | Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                                                                                                                                                                                                                                                                                        | counter payment, receipt                    |
 | Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`                                                                                                                                                                                                                                                                            | Dispatch, My jobs                           |
 | Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                                                                                                                                                                                                                                                                                  | Track                                       |
-| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`                                                                                                                                                                                                                                                                                                        | email                                       |
+| Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`, `DeliveryAssigned`, `SendDriverAssignmentNotifications`, `DriverJobAssigned`, `DriverJobRemoved`, `DriverRunSheet`                                                                                                                                                                                    | email                                       |
 | Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                                                                                                                                                                                                                                                                                | Branches, admin branches                    |
 | Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                                                                                                                                                                                                                                                                               | Site settings                               |
 | Pricing      | `RateCard` (with its zones, routes and bands), `RateCards`, `PriceList`, `PriceCalculator`, `PriceQuote`, `Actions/RateCards/*`, `RateCardPolicy`, `Admin\RateCardController`; spreadsheets: `RateImport`, `Actions/RateImports/*`, the `ParseRateImport` and `ValidateRateImport` jobs, `Support/RateSheets/*`, `RateImportPolicy`, `Admin\RateImportController`, `Admin\RateCardExportController` | Pricing, admin Rates, Import rates          |
@@ -378,6 +378,42 @@ cells, go with it.
 - It only writes to customers with a verified email address. It skips driver
   swaps that don't change the delivery day.
 
+**Driver emails.** `AssignDriver` also dispatches `DeliveryAssigned` after
+commit. The event carries the run the delivery was on before (its driver and
+day), read under the row lock: by the time anyone hears the event, the order
+only knows its new driver and day. `SendDriverAssignmentNotifications` then
+queues one email per driver, so each is sent and retried on its own:
+
+| Change                                  | The assigned driver gets                             | The previous driver gets                                   |
+| --------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------- |
+| First assignment                        | `DriverJobAssigned`, a new job                       | nobody had it                                              |
+| Same driver, another day                | `DriverJobAssigned`, moved from one day to the other | nothing                                                    |
+| Another driver, the same day or another | `DriverJobAssigned`, a new job                       | `DriverJobRemoved`, "removed from your round for" that day |
+| Reschedule after a failed delivery      | `DriverJobAssigned`, a new job                       | nothing: that job ended with the attempt                   |
+
+- Nothing is sent when neither the driver nor the day changed. A queued email
+  is dropped if the delivery moved on, or the account can no longer be
+  emailed, before it went out.
+- A driver whose new-job email was dropped that way never heard of the job,
+  so they are not told it was removed either: `DriverJobAssigned` notes it in
+  the cache for `DriverJobRemoved`. A job handed over after its day had
+  passed is "removed from your list", as the driver saw it carried over on
+  today's My jobs.
+- Drivers are written to on the same terms as customers' reminders
+  (`User::canBeEmailed()`): an active account with a verified address.
+  Accounts an admin creates are verified from the start, so this only holds
+  email back after a driver changes their address, until they confirm it.
+- The emails give the tracking number, the day, the pickup branch and the
+  delivery area (city and postcode), and link to the job or to My jobs. The
+  receiver's name, address and phone number stay behind the driver's sign-in.
+  They call the driver's day their "round", as My jobs does.
+- Every email has Laravel's notification layout with a small Kotak theme
+  (`resources/views/vendor/mail/html/themes/kotak.css`): the wordmark, a band
+  across the card and the main button in the brand red (the next step, as on
+  the site), links in the site's darker red, and buttons at least 44px tall.
+  Dates, branch names and postcodes with their town are joined by no-break
+  spaces (`MailDate`, `Branch::mailAddress()`), so a phone never splits them.
+
 ### Site settings and scheduled jobs
 
 Admins change three business rules on **Site settings** (`admin/Settings`).
@@ -408,13 +444,14 @@ Each falls back to its default in `config/kotak.php` until it is saved:
   the limit counts them. It is worked out in PHP from `created_at` and
   `dropped_off_at`, without database date functions.
 
-The scheduler runs three jobs, all in Malaysia time and never overlapping:
+The scheduler runs four jobs, all in Malaysia time and never overlapping:
 
-| Command                   | When  | What it does                                                                                                         |
-| ------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
-| `orders:remind-unclaimed` | 09:00 | Emails a `DropOffReminder` from `drop_off_reminder_days_before` days before the order's deadline day                 |
-| `orders:expire-unclaimed` | 00:00 | Cancels orders still not dropped off once their deadline day has ended (`ExpireUnclaimedOrders`, `Order::unclaimed`) |
-| `rates:prune-imports`     | 03:00 | Deletes uploaded rate spreadsheets older than 7 days (`PruneRateImportFiles`)                                        |
+| Command                   | When  | What it does                                                                                                                        |
+| ------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `orders:remind-unclaimed` | 09:00 | Emails a `DropOffReminder` from `drop_off_reminder_days_before` days before the order's deadline day                                |
+| `orders:expire-unclaimed` | 00:00 | Cancels orders still not dropped off once their deadline day has ended (`ExpireUnclaimedOrders`, `Order::unclaimed`)                |
+| `drivers:send-run-sheets` | 07:00 | Emails a `DriverRunSheet` to each driver with jobs: today's My jobs list, overdue jobs included, by pickup branch (`SendRunSheets`) |
+| `rates:prune-imports`     | 03:00 | Deletes uploaded rate spreadsheets older than 7 days (`PruneRateImportFiles`)                                                       |
 
 - Each reminder locks the order and sets `drop_off_reminded_at` in one
   transaction before the email is queued, so a second or overlapping run
@@ -426,6 +463,18 @@ The scheduler runs three jobs, all in Malaysia time and never overlapping:
   hours, the drop-off deadline (a date in Malaysia time), a link to the order
   and a note that it can be cancelled. The order page and the list show the
   same deadline, worked out on the server.
+- The run sheet lists the same jobs as My jobs (`Order::jobListFor()`), in
+  one table: the parcels already on the van first, then the ones to collect
+  under each pickup branch's name and address, each with its area and status.
+  Drivers without jobs, deactivated accounts and unverified addresses get
+  none.
+- The list is read when the email is sent, not when it is queued, so a late
+  email never lists a job delivered or handed to another driver since 7:00.
+  It is dropped once nothing is left, or once its day is over.
+- Each driver gets one run sheet a day: a cache key per driver and day
+  (`Cache::add`) stops a second or overlapping run from sending it again. If
+  one email cannot be queued, the error is reported and its key released, so
+  the other drivers still get theirs and a later run that day can send it.
 
 ### Frontend
 
@@ -471,6 +520,23 @@ Actions write only values they computed themselves, never raw request input.
 - Tracking numbers are 8 random Crockford base32 characters (32⁸ ≈ 1.1
   trillion), so they are hard to guess.
 - Order creation is also throttled, to 10 a minute per customer.
+
+**Emails**
+
+- Driver emails carry only what a driver needs before signing in: the
+  tracking number, the day, the pickup branch and the delivery area (city
+  and postcode). Receivers' names, addresses and phone numbers are on the job
+  page.
+- Status, reminder and driver emails only go to verified addresses, and never
+  to the reserved `.test` addresses of the demo accounts. Driver emails check
+  this again when they are sent.
+- Text a customer types never becomes a link, image or heading in someone
+  else's email. A city with a line break or `< > [ ] |` is refused when the
+  order is placed, `Order::deliveryArea()` takes those characters out of older
+  orders, and Markdown mail uses Laravel's secured encoding, which escapes `[`
+  as well as HTML. That encoding only covers mail views compiled while an
+  email renders, and `php artisan optimize` compiles them ahead, so the first
+  two do not rely on it.
 
 **Payments**
 
@@ -578,9 +644,10 @@ update script are in [`deploy/`](deploy).
   imports. Run `php artisan queue:restart` on each deploy. The
   `database` queue is fine to start with; Redis is the step up.
 - **Scheduler**: run `php artisan schedule:run` every minute (a systemd timer
-  in [`deploy/systemd`](deploy/systemd), or cron). It sends drop-off
-  reminders at 9:00, cancels unclaimed orders at midnight and deletes
-  uploaded rate spreadsheets older than a week at 3:00, Malaysia time.
+  in [`deploy/systemd`](deploy/systemd), or cron). It emails drivers their
+  run sheets at 7:00, sends drop-off reminders at 9:00, cancels unclaimed
+  orders at midnight and deletes uploaded rate spreadsheets older than a week
+  at 3:00, Malaysia time.
 - **Private storage**: proof-of-delivery photos and uploaded rate
   spreadsheets live in `storage/app/private`, outside the web root. Back it
   up with the database. With more than one web server, move the photos to a
@@ -589,8 +656,8 @@ update script are in [`deploy/`](deploy).
   spreadsheets from the same disk, so they need shared storage too.
 - **Mail**: set a real mailer, for example Amazon SES through
   `MAIL_MAILER=smtp` (no extra package), and `MAIL_FROM_ADDRESS` on a domain
-  with SPF and DKIM set up. Status and reminder emails only go out while the
-  queue worker runs.
+  with SPF and DKIM set up. Status, reminder and driver emails only go out
+  while the queue worker runs.
 
 ## What I'd add next
 

@@ -46,7 +46,8 @@ class StoreOrderRequest extends FormRequest
             'receiver_phone' => ['required', 'string', MalaysianPhone::mobileOrLandline()],
             'address_line1' => ['required', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],
-            'city' => ['required', 'string', 'max:100'],
+            // Shown to drivers in their emails: one line, nothing that could act as markup.
+            'city' => ['required', 'string', 'max:100', 'not_regex:/[\x00-\x1F\x7F<>\[\]|]/'],
             'state' => ['required', 'string', Rule::enum(MalaysianState::class)],
             'postcode' => ['required', 'string', 'regex:/^\d{5}$/'],
             'item_name' => ['required', 'string', 'max:100'],
@@ -87,6 +88,8 @@ class StoreOrderRequest extends FormRequest
 
         return [
             'branch_id.exists' => 'Choose a branch that is open for drop-off.',
+            // No-break spaces keep the characters together in the narrow city column.
+            'city.not_regex' => "Remove the characters <\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the city.",
             'postcode.regex' => 'Enter a 5-digit postcode.',
             'declared_weight_g.min' => 'Enter the parcel\'s weight.',
             'declared_weight_g.max' => "We accept parcels up to {$maxKg} kg.",

@@ -10,6 +10,7 @@ use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -37,6 +38,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
         $this->configureRateLimiting();
+        $this->configureMail();
         $this->skipReservedTestAddresses();
     }
 
@@ -83,6 +85,21 @@ class AppServiceProvider extends ServiceProvider
 
         // Rate imports: each upload, sheet or mapping keeps a file or queues a job, per admin.
         RateLimiter::for('rate-imports', fn (Request $request) => Limit::perMinute(10)->by($request->user()?->id ?: $request->ip()));
+    }
+
+    /**
+     * Keep users' own text in emails as plain text.
+     *
+     * Markdown emails escape HTML in {{ }} echoes but not Markdown, so a
+     * "[text](url)" typed into an order would become a link in another
+     * user's email. Secured encoding escapes "[" as well. It applies when the
+     * mail views are compiled while an email renders; views compiled ahead
+     * (view:cache) keep the plain HTML escaping, so text from users is also
+     * made safe where it is built, such as Order::deliveryArea().
+     */
+    protected function configureMail(): void
+    {
+        Markdown::withSecuredEncoding();
     }
 
     /**

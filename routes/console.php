@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Delivery\SendRunSheets;
 use App\Actions\Orders\ExpireUnclaimedOrders;
 use App\Actions\Orders\SendDropOffReminders;
 use App\Actions\RateImports\PruneRateImportFiles;
@@ -19,6 +20,10 @@ Artisan::command('orders:remind-unclaimed', function (SendDropOffReminders $remi
     $this->info("Queued {$remind->handle()} drop-off reminder(s).");
 })->purpose('Remind customers to drop off orders that will soon be cancelled');
 
+Artisan::command('drivers:send-run-sheets', function (SendRunSheets $send) {
+    $this->info("Queued {$send->handle()} run sheet(s).");
+})->purpose("Email each driver today's deliveries");
+
 Artisan::command('rates:prune-imports', function (PruneRateImportFiles $prune) {
     $this->info("Deleted {$prune->handle()} rate import file(s).");
 })->purpose('Delete uploaded rate spreadsheets older than a week');
@@ -32,6 +37,12 @@ Schedule::command('orders:expire-unclaimed')
 // Runs at 9am Malaysia time, when branches are opening.
 Schedule::command('orders:remind-unclaimed')
     ->dailyAt('09:00')
+    ->timezone(config()->string('kotak.timezone'))
+    ->withoutOverlapping();
+
+// Runs at 7am Malaysia time, before drivers collect their parcels.
+Schedule::command('drivers:send-run-sheets')
+    ->dailyAt('07:00')
     ->timezone(config()->string('kotak.timezone'))
     ->withoutOverlapping();
 

@@ -53,10 +53,11 @@ composer run dev                         # http://localhost:8000 and a queue lis
   domains cannot exist. To read the demo emails, set
   `MAIL_TO_ADDRESS=you@example.com` in `.env`: every email then goes to that
   address and appears in the log. Or register your own account.
-- **Scheduler.** It is only needed for the 9:00 drop-off reminders, the
-  nightly clean-up of unclaimed orders and the deletion of uploaded rate
-  spreadsheets after a week. Run `php artisan schedule:work` in another
-  terminal, or call the jobs directly with
+- **Scheduler.** It is only needed for the 7:00 driver run sheets, the 9:00
+  drop-off reminders, the nightly clean-up of unclaimed orders and the
+  deletion of uploaded rate spreadsheets after a week. Run
+  `php artisan schedule:work` in another terminal, or call the jobs directly
+  with `php artisan drivers:send-run-sheets`,
   `php artisan orders:remind-unclaimed`, `php artisan orders:expire-unclaimed`
   and `php artisan rates:prune-imports`.
 - **Wayfinder.** The Vite plugin regenerates the route helpers. If they are
@@ -160,7 +161,9 @@ The PHP tests cover:
   card, formula escaping, the jobs' steps and the daily file clean-up
 - payments
 - proof-of-delivery privacy
-- the queued notifications
+- the queued notifications, including which driver gets which email when a
+  delivery is assigned, moved or handed over, the morning run sheets, and
+  that no driver email carries the receiver's details
 - the site settings, the drop-off timing figures and the reminder job
 - rate limits and security headers
 - the indexes behind the busiest pages (MySQL's `EXPLAIN` on a month of

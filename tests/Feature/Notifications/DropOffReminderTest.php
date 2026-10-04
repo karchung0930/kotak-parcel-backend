@@ -30,8 +30,8 @@ class DropOffReminderTest extends TestCase
         $this->assertSame("Parcel {$order->formatted_tracking_number}: drop it off by 10 October", $mail->subject);
         $this->assertSame('Hi Aisyah Rahman,', $mail->greeting);
         $this->assertContains("Your parcel **{$order->formatted_tracking_number}** to Daniel Lim is still waiting to be dropped off.", $mail->introLines);
-        $this->assertContains('Drop-off deadline: **Saturday, 10 October 2026**. If it is not dropped off by then, the order is cancelled automatically.', $mail->introLines);
-        $this->assertContains('Your drop-off branch: **Petaling Jaya - SS2**, 12, Jalan SS 2/67, SS 2, 47300 Petaling Jaya.', $mail->introLines);
+        $this->assertContains("Drop-off deadline: **Saturday, 10\u{00A0}October\u{00A0}2026**. If it is not dropped off by then, the order is cancelled automatically.", $mail->introLines);
+        $this->assertContains("Your drop-off branch: **Petaling Jaya - SS2**, 12, Jalan SS 2/67, SS 2, 47300\u{00A0}Petaling\u{00A0}Jaya.", $mail->introLines);
         $this->assertContains('Opening hours: Mon-Sat 9:00-21:00, Sun 10:00-18:00.', $mail->introLines);
         $this->assertSame('View your order', $mail->actionText);
         $this->assertSame(route('orders.show', $order), $mail->actionUrl);

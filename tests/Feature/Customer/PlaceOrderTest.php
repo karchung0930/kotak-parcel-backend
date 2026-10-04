@@ -182,6 +182,10 @@ class PlaceOrderTest extends TestCase
             'missing receiver name' => [['receiver_name' => ''], 'receiver_name'],
             'missing address' => [['address_line1' => ''], 'address_line1'],
             'missing city' => [['city' => ''], 'city'],
+            'city over two lines' => [['city' => "Klang\n\n# Urgent"], 'city'],
+            'city with a link' => [['city' => 'Klang [Sign in](https://example.com)'], 'city'],
+            'city with a tag' => [['city' => 'Klang <b>'], 'city'],
+            'city with a pipe' => [['city' => 'Kuala | Lumpur'], 'city'],
             'unknown state' => [['state' => 'Singapore'], 'state'],
             'four digit postcode' => [['postcode' => '4700'], 'postcode'],
             'six digit postcode' => [['postcode' => '470001'], 'postcode'],
@@ -224,6 +228,13 @@ class PlaceOrderTest extends TestCase
                 'length_cm' => 'Each side of the parcel can be up to 150 cm.',
                 'receiver_phone' => 'Enter a valid Malaysian mobile or landline number.',
             ]);
+    }
+
+    public function test_a_city_with_markup_is_explained()
+    {
+        $this->actingAs($this->customer)
+            ->post(route('orders.store'), $this->input(['city' => 'Klang <b>']))
+            ->assertSessionHasErrors(['city' => "Remove the characters <\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the city."]);
     }
 
     /**

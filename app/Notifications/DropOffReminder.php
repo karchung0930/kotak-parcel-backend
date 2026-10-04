@@ -5,6 +5,7 @@ namespace App\Notifications;
 use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\MailDate;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -64,8 +65,8 @@ class DropOffReminder extends Notification implements ShouldQueue
             ->subject("Parcel {$trackingNumber}: drop it off by {$deadline?->format('j F')}")
             ->greeting("Hi {$notifiable->name},")
             ->line("Your parcel **{$trackingNumber}** to {$this->order->receiver_name} is still waiting to be dropped off.")
-            ->line("Drop-off deadline: **{$deadline?->format('l, j F Y')}**. If it is not dropped off by then, the order is cancelled automatically.")
-            ->line("Your drop-off branch: **{$branch->name}**, {$branch->address}, {$branch->postcode} {$branch->city}.")
+            ->line('Drop-off deadline: **'.($deadline !== null ? MailDate::long($deadline) : '').'**. If it is not dropped off by then, the order is cancelled automatically.')
+            ->line("Your drop-off branch: **{$branch->name}**, {$branch->mailAddress()}.")
             ->line("Opening hours: {$branch->opening_hours}.")
             ->action('View your order', route('orders.show', $this->order))
             ->line('No longer sending it? You can cancel the order on the same page.')

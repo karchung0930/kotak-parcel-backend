@@ -133,7 +133,7 @@ SQL
     if [ "$SEED" = 1 ] && [ "$(php artisan tinker --execute='echo App\Models\Order::count();' 2>/dev/null | tail -1)" = 0 ]; then
         step "Demo data (every password is \"password\")"
         sudo -u apache bash -c 'umask 0002 && php artisan db:seed --env=staging --force'
-        # The worker is not running yet: drop the seeded status emails so they are never sent.
+        # The worker is not running yet: drop the seeded emails so they are never sent.
         php artisan queue:clear --force
     fi
     php artisan optimize
