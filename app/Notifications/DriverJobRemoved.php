@@ -5,6 +5,8 @@ namespace App\Notifications;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\MailDate;
+use App\Support\MailText;
+use App\Support\TrackingNumber;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -72,23 +74,24 @@ class DriverJobRemoved extends Notification implements ShouldQueue
     public function toMail(User $notifiable): MailMessage
     {
         $trackingNumber = $this->order->formatted_tracking_number;
+        $bodyTrackingNumber = TrackingNumber::formatForMail($this->order->tracking_number);
         $date = $this->date->toDateString();
         $today = today(config()->string('kotak.timezone'))->toDateString();
 
-        $mail = (new MailMessage)->greeting("Hi {$notifiable->name},");
+        $mail = (new MailMessage)->greeting('Hi '.MailText::plain($notifiable->name).',');
 
         // No-break spaces keep each sentence's last words together on narrow screens.
         if ($date < $today) {
             $mail->subject("Delivery {$trackingNumber} removed from your list")
-                ->line("Delivery **{$trackingNumber}**, carried over from ".MailDate::long($this->date).", has been removed from your list. You no longer need to collect\u{00A0}it.");
+                ->line("Delivery **{$bodyTrackingNumber}**, carried over from ".MailDate::long($this->date).", has been removed from your list. You no longer need to collect\u{00A0}it.");
         } else {
             $mail->subject("Delivery {$trackingNumber} removed from your round for {$this->date->format('l, j F')}")
-                ->line("Delivery **{$trackingNumber}** has been removed from your round for **".MailDate::long($this->date)."**. You no longer need to collect\u{00A0}it.");
+                ->line("Delivery **{$bodyTrackingNumber}** has been removed from your round for **".MailDate::long($this->date)."**. You no longer need to collect\u{00A0}it.");
         }
 
         // My jobs opens on today, which also lists overdue jobs; a later day needs its date.
         return $mail
-            ->line("It was to be collected from {$this->order->branch->name} for delivery to {$this->order->deliveryArea()}.")
+            ->line('It was to be collected from '.MailText::plain($this->order->branch->name)." for delivery to {$this->order->deliveryArea()}.")
             ->action('Open My jobs', route('driver.jobs', $date > $today ? ['date' => $date] : []));
     }
 }

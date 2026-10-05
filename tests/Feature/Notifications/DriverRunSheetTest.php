@@ -194,6 +194,55 @@ class DriverRunSheetTest extends TestCase
         $this->assertStringContainsString($area, (string) $email->getTextBody());
     }
 
+    public function test_names_and_branches_cannot_break_the_table_or_add_markup()
+    {
+        [$ss2] = $this->branches();
+        $markup = "[Verify](https://evil.example) ![](https://evil.example/p.gif) <b>now</b> |\n\n# URGENT";
+        // Typed by an admin: the driver's account and the branch.
+        $this->driver->forceFill(['name' => "Ravi {$markup}"])->save();
+        $ss2->forceFill(['name' => "SS2 {$markup}", 'address' => "12, Jalan SS 2/67 {$markup}"])->save();
+        $this->job($ss2, ['city' => 'Klang', 'postcode' => '41050']);
+        $this->job($ss2, ['city' => 'Kajang', 'postcode' => '43000']);
+
+        // As in production, where view:cache compiles the mail views before
+        // any email is sent, with plain HTML escaping only: the run sheet and
+        // its table, for the HTML and the plain-text part.
+        $compiler = app('view')->getEngineResolver()->resolve('blade')->getCompiler();
+        $views = [
+            app('view')->getFinder()->find('mail.driver-run-sheet'),
+            resource_path('views/vendor/mail/html/job-table.blade.php'),
+            resource_path('views/vendor/mail/text/job-table.blade.php'),
+        ];
+
+        foreach ($views as $view) {
+            $compiler->compile($view);
+        }
+
+        try {
+            app(SendRunSheets::class)->handle();
+            $email = $this->sentEmails()[0];
+            $html = (string) $email->getHtmlBody();
+            $plain = 'Verify (https://evil.example) ! (https://evil.example/p.gif) b now /b # URGENT';
+
+            $this->assertStringContainsString("Hi Ravi {$plain},", $html);
+            $this->assertStringContainsString('Collect from SS2'.str_replace(' ', "\u{00A0}", " {$plain}").'<br>', $html);
+            $this->assertStringContainsString("2 parcels · 12, Jalan SS 2/67 {$plain}, 47300\u{00A0}Petaling\u{00A0}Jaya", $html);
+            // Still one table, with both jobs in it.
+            $this->assertSame(1, substr_count($html, '<table class="jobs"'));
+            $this->assertSame(2, substr_count($html, 'class="jobs-tracking"', strpos($html, '<tbody')));
+            $this->assertStringNotContainsString('<h1>URGENT', $html);
+            $this->assertStringNotContainsString('href="https://evil.example', $html);
+            $this->assertStringNotContainsString('<img', $html);
+            $this->assertStringNotContainsString('<b>now', $html);
+            $this->assertStringContainsString("12, Jalan SS 2/67 {$plain}, 47300\u{00A0}Petaling\u{00A0}Jaya", (string) $email->getTextBody());
+        } finally {
+            // The next email compiles the views again, as in the other tests.
+            foreach ($views as $view) {
+                @unlink($compiler->getCompiledPath($view));
+            }
+        }
+    }
+
     public function test_the_email_lists_the_jobs_as_they_are_when_it_is_sent()
     {
         Queue::fake();

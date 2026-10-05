@@ -6,6 +6,7 @@ use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\MailDate;
+use App\Support\MailText;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -23,6 +24,9 @@ use Illuminate\Support\Str;
  * round, then the parcels already on the van and the ones to collect, by
  * pickup branch, each with its area and status. It is the same list as My
  * jobs, without the receivers' details, which stay behind the sign-in.
+ *
+ * Names, branches and areas are text that users typed, so they are printed
+ * as plain text (MailText::plain()), which also keeps them inside the table.
  *
  * The list is read when the email is sent, not when it is queued, so a
  * delayed email never lists a job delivered or handed to another driver
@@ -102,7 +106,7 @@ class DriverRunSheet extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->subject("Your round for {$this->day->format('l, j F')}: {$deliveries}")
-            ->greeting("Hi {$notifiable->name},")
+            ->greeting('Hi '.MailText::plain($notifiable->name).',')
             ->line(sprintf(
                 'You have **%s** today%s.',
                 $deliveries,
@@ -139,7 +143,7 @@ class DriverRunSheet extends Notification implements ShouldQueue
                 $branch = $first->branch;
 
                 return $this->group(
-                    'Collect from '.$this->unbrokenBranchName($branch->name),
+                    'Collect from '.$this->unbrokenBranchName(MailText::plain($branch->name)),
                     $branch->mailAddress(),
                     $jobs,
                 );

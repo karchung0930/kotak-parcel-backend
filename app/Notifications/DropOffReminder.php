@@ -6,6 +6,8 @@ use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\MailDate;
+use App\Support\MailText;
+use App\Support\TrackingNumber;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -17,6 +19,9 @@ use Illuminate\Queue\Attributes\Tries;
 /**
  * Reminds a customer to drop their parcel off before the order is cancelled
  * automatically. Sent once per order by App\Actions\Orders\SendDropOffReminders.
+ *
+ * The names, the branch and its opening hours are text that users typed, so
+ * they are printed as plain text (MailText::plain()).
  */
 #[Tries(3)]
 #[Backoff(60)]
@@ -58,16 +63,18 @@ class DropOffReminder extends Notification implements ShouldQueue
     public function toMail(User $notifiable): MailMessage
     {
         $trackingNumber = $this->order->formatted_tracking_number;
+        $bodyTrackingNumber = TrackingNumber::formatForMail($this->order->tracking_number);
         $deadline = $this->order->dropOffDeadline();
         $branch = $this->order->branch;
+        $receiver = MailText::plain($this->order->receiver_name);
 
         return (new MailMessage)
             ->subject("Parcel {$trackingNumber}: drop it off by {$deadline?->format('j F')}")
-            ->greeting("Hi {$notifiable->name},")
-            ->line("Your parcel **{$trackingNumber}** to {$this->order->receiver_name} is still waiting to be dropped off.")
+            ->greeting('Hi '.MailText::plain($notifiable->name).',')
+            ->line("Your parcel **{$bodyTrackingNumber}** to {$receiver} is still waiting to be dropped off.")
             ->line('Drop-off deadline: **'.($deadline !== null ? MailDate::long($deadline) : '').'**. If it is not dropped off by then, the order is cancelled automatically.')
-            ->line("Your drop-off branch: **{$branch->name}**, {$branch->mailAddress()}.")
-            ->line("Opening hours: {$branch->opening_hours}.")
+            ->line('Your drop-off branch: **'.MailText::plain($branch->name)."**, {$branch->mailAddress()}.")
+            ->line('Opening hours: '.MailText::plain($branch->opening_hours).'.')
             ->action('View your order', route('orders.show', $this->order))
             ->line('No longer sending it? You can cancel the order on the same page.')
             ->line('Thank you for sending with Kotak.');

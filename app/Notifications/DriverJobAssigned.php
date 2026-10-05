@@ -5,6 +5,8 @@ namespace App\Notifications;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\MailDate;
+use App\Support\MailText;
+use App\Support\TrackingNumber;
 use Carbon\CarbonInterface;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -22,7 +24,8 @@ use Illuminate\Support\Facades\Cache;
  * App\Listeners\SendDriverAssignmentNotifications.
  *
  * It gives the delivery area, never the address or the receiver: those are
- * on the job page, behind the driver's sign-in.
+ * on the job page, behind the driver's sign-in. Names, the branch and the
+ * area are text that users typed, printed as plain text (MailText::plain()).
  */
 #[Tries(3)]
 #[Backoff(60)]
@@ -97,6 +100,7 @@ class DriverJobAssigned extends Notification implements ShouldQueue
     public function toMail(User $notifiable): MailMessage
     {
         $trackingNumber = $this->order->formatted_tracking_number;
+        $bodyTrackingNumber = TrackingNumber::formatForMail($this->order->tracking_number);
         $branch = $this->order->branch;
         $day = MailDate::long($this->scheduledFor);
 
@@ -104,12 +108,12 @@ class DriverJobAssigned extends Notification implements ShouldQueue
             ->subject($this->movedFrom !== null
                 ? "Delivery {$trackingNumber} moved to {$this->scheduledFor->format('l, j F')}"
                 : "New delivery for {$this->scheduledFor->format('l, j F')}: {$trackingNumber}")
-            ->greeting("Hi {$notifiable->name},")
+            ->greeting('Hi '.MailText::plain($notifiable->name).',')
             ->line($this->movedFrom !== null
                 ? 'A delivery on your round has moved from '.MailDate::long($this->movedFrom)." to **{$day}**."
                 : "A delivery has been added to your round for **{$day}**.")
-            ->line("Tracking number: **{$trackingNumber}**")
-            ->line("Collect it from: **{$branch->name}**, {$branch->mailAddress()}.")
+            ->line("Tracking number: **{$bodyTrackingNumber}**")
+            ->line('Collect it from: **'.MailText::plain($branch->name)."**, {$branch->mailAddress()}.")
             ->line("Delivery area: **{$this->order->deliveryArea()}**")
             ->action('Open the job', route('driver.jobs.show', $this->order))
             ->line("The receiver's name, address and phone number are on the job page.");

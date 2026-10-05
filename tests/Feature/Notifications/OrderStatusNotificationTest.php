@@ -157,18 +157,43 @@ class OrderStatusNotificationTest extends TestCase
     public function test_the_email_names_the_status_explains_it_and_links_to_public_tracking()
     {
         $customer = User::factory()->create(['name' => 'Aisyah Rahman']);
-        $order = Order::factory()->for($customer, 'customer')->pickedUp()->create();
-        $trackingUrl = route('track', ['number' => $order->formatted_tracking_number]);
+        $order = Order::factory()->for($customer, 'customer')->pickedUp()->create(['tracking_number' => 'KT7Q4M92XD']);
+        $trackingUrl = route('track', ['number' => 'KT-7Q4M92XD']);
 
         $mail = (new OrderStatusUpdated($order, OrderStatus::PickedUp))->toMail($customer);
 
         $this->assertSame("Parcel {$order->formatted_tracking_number}: Picked Up", $mail->subject);
         $this->assertSame('Hi Aisyah Rahman,', $mail->greeting);
-        $this->assertContains("Status update for parcel **{$order->formatted_tracking_number}**: **Picked Up**", $mail->introLines);
+        $this->assertContains("Status update for parcel **KT\u{2011}7Q4M92XD**: **Picked Up**", $mail->introLines);
         $this->assertContains('Your parcel is out for delivery.', $mail->introLines);
         $this->assertSame('Track your parcel', $mail->actionText);
         $this->assertSame($trackingUrl, $mail->actionUrl);
         $this->assertStringContainsString($trackingUrl, (string) $mail->render());
+    }
+
+    public function test_the_customers_name_cannot_add_markup_to_the_email()
+    {
+        // An account name from before names were checked.
+        $customer = User::factory()->create(['name' => "Aisyah [Sign in](https://evil.example/in) <b>now</b> |\n\n# URGENT"]);
+        $order = Order::factory()->for($customer, 'customer')->pickedUp()->create();
+
+        // As in production, where view:cache compiles the mail views before
+        // any email is sent, with plain HTML escaping only.
+        $compiler = app('view')->getEngineResolver()->resolve('blade')->getCompiler();
+        $view = app('view')->getFinder()->find('notifications::email');
+        $compiler->compile($view);
+
+        try {
+            $html = (string) (new OrderStatusUpdated($order, OrderStatus::PickedUp))->toMail($customer)->render();
+
+            $this->assertStringContainsString('Hi Aisyah Sign in (https://evil.example/in) b now /b # URGENT,', $html);
+            $this->assertStringNotContainsString('href="https://evil.example', $html);
+            $this->assertStringNotContainsString('<b>now', $html);
+            $this->assertStringNotContainsString('<h1>URGENT', $html);
+        } finally {
+            // The next email compiles the view again, as in the other tests.
+            @unlink($compiler->getCompiledPath($view));
+        }
     }
 
     public function test_the_scheduled_date_is_included_once_a_driver_is_assigned()

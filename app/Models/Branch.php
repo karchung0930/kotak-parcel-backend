@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\MalaysianState;
 use App\Support\Geo;
+use App\Support\MailText;
 use Database\Factories\BranchFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -12,7 +13,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -76,12 +76,13 @@ class Branch extends Model
 
     /**
      * Get the address on one line as emails give it, e.g. "12, Jalan SS 2/67,
-     * SS 2, 47300 Petaling Jaya". The postcode and town are joined by no-break
-     * spaces, so a narrow screen never leaves the town's last word alone.
+     * SS 2, 47300 Petaling Jaya", as plain text (MailText::plain()). The
+     * postcode and town are joined by no-break spaces, so a narrow screen
+     * never leaves the town's last word alone.
      */
     public function mailAddress(): string
     {
-        return Str::squish($this->address).', '.str_replace(' ', "\u{00A0}", Str::squish("{$this->postcode} {$this->city}"));
+        return MailText::plain($this->address).', '.str_replace(' ', "\u{00A0}", MailText::plain("{$this->postcode} {$this->city}"));
     }
 
     /**

@@ -32,6 +32,9 @@ class TrackingNumberTest extends TestCase
             'display form' => ['KT-7Q4M92XD', 'KT7Q4M92XD'],
             'lower case' => ['kt-7q4m92xd', 'KT7Q4M92XD'],
             'spaces' => [' KT 7Q4M 92XD ', 'KT7Q4M92XD'],
+            'copied from an email' => ["KT\u{2011}7Q4M92XD", 'KT7Q4M92XD'],
+            'typed with a dash' => ["KT\u{2013}7Q4M92XD", 'KT7Q4M92XD'],
+            'no-break space' => ["KT\u{00A0}7Q4M92XD", 'KT7Q4M92XD'],
             'confusable letters' => ['KT-7Q4M92XO', 'KT7Q4M92X0'],
             'I and L read as one' => ['KT-IL000000', 'KT11000000'],
             'wrong prefix' => ['XX-7Q4M92XD', null],
@@ -53,5 +56,11 @@ class TrackingNumberTest extends TestCase
     public function test_numbers_are_formatted_for_display()
     {
         $this->assertSame('KT-7Q4M92XD', TrackingNumber::format('KT7Q4M92XD'));
+    }
+
+    public function test_emails_keep_the_number_on_one_line()
+    {
+        $this->assertSame("KT\u{2011}7Q4M92XD", TrackingNumber::formatForMail('KT7Q4M92XD'));
+        $this->assertSame('KT7Q4M92XD', TrackingNumber::normalize(TrackingNumber::formatForMail('KT7Q4M92XD')));
     }
 }

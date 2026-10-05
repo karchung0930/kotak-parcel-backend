@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\DeliveryOutcome;
 use App\Enums\MalaysianState;
 use App\Enums\OrderStatus;
+use App\Support\MailText;
 use App\Support\Settings;
 use App\Support\TrackingNumber;
 use Carbon\CarbonImmutable;
@@ -237,18 +238,16 @@ class Order extends Model
      *
      * The city is the customer's own text, so this is always one line of
      * plain text, without the characters that Markdown or an HTML table would
-     * read as markup ([ ] < > |). New orders cannot have them
+     * read as markup (MailText::plain()). New orders cannot have them
      * (StoreOrderRequest); this also covers older ones, and does not rely on
-     * how the mail views were compiled (see AppServiceProvider::configureMail()).
+     * how the mail views were compiled.
      *
      * The postcode is joined to the town's last word by a no-break space, so
      * a narrow screen never leaves it alone on a line.
      */
     public function deliveryArea(): string
     {
-        $area = Str::squish(str_replace(['[', ']', '<', '>', '|'], ' ', "{$this->city} {$this->postcode}"));
-
-        return Str::replaceLast(' ', "\u{00A0}", $area);
+        return Str::replaceLast(' ', "\u{00A0}", MailText::plain("{$this->city} {$this->postcode}"));
     }
 
     /**

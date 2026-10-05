@@ -43,6 +43,7 @@ class TrackingPageTest extends TestCase
             'lowercase' => ['kt-7q4m92xd'],
             'lowercase without the hyphen' => ['kt7q4m92xd'],
             'with spaces' => [' KT 7Q4M 92XD '],
+            'copied from an email' => ["KT\u{2011}7Q4M92XD"],
         ];
     }
 

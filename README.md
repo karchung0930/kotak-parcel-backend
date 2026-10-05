@@ -412,7 +412,10 @@ queues one email per driver, so each is sent and retried on its own:
   across the card and the main button in the brand red (the next step, as on
   the site), links in the site's darker red, and buttons at least 44px tall.
   Dates, branch names and postcodes with their town are joined by no-break
-  spaces (`MailDate`, `Branch::mailAddress()`), so a phone never splits them.
+  spaces (`MailDate`, `Branch::mailAddress()`), and tracking numbers by a
+  no-break hyphen (`TrackingNumber::formatForMail()`), so a phone never splits
+  them. Subjects keep plain spaces and hyphens, so an inbox search finds them,
+  and a number copied from an email still finds the parcel on Track.
 
 ### Site settings and scheduled jobs
 
@@ -530,13 +533,15 @@ Actions write only values they computed themselves, never raw request input.
 - Status, reminder and driver emails only go to verified addresses, and never
   to the reserved `.test` addresses of the demo accounts. Driver emails check
   this again when they are sent.
-- Text a customer types never becomes a link, image or heading in someone
-  else's email. A city with a line break or `< > [ ] |` is refused when the
-  order is placed, `Order::deliveryArea()` takes those characters out of older
-  orders, and Markdown mail uses Laravel's secured encoding, which escapes `[`
-  as well as HTML. That encoding only covers mail views compiled while an
-  email renders, and `php artisan optimize` compiles them ahead, so the first
-  two do not rely on it.
+- Text that users type is printed in emails as plain text: no Markdown or
+  HTML in it becomes a link, image, heading or table cell. A city with a
+  line break or `< > [ ] |` is refused when the order is placed, and
+  `MailText::plain()` takes those characters out of every name, city and
+  branch detail that an email prints, which also covers older orders and
+  accounts. Markdown mail also uses Laravel's secured encoding, which
+  escapes `[` as well as HTML, but that only covers mail views compiled
+  while an email renders, and `php artisan optimize` compiles them ahead,
+  so the first two do not rely on it.
 
 **Payments**
 

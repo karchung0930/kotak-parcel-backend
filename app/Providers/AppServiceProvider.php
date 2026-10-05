@@ -95,7 +95,7 @@ class AppServiceProvider extends ServiceProvider
      * user's email. Secured encoding escapes "[" as well. It applies when the
      * mail views are compiled while an email renders; views compiled ahead
      * (view:cache) keep the plain HTML escaping, so text from users is also
-     * made safe where it is built, such as Order::deliveryArea().
+     * made safe where it is built, with App\Support\MailText::plain().
      */
     protected function configureMail(): void
     {

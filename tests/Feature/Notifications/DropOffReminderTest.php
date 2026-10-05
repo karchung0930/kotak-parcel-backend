@@ -29,13 +29,55 @@ class DropOffReminderTest extends TestCase
 
         $this->assertSame("Parcel {$order->formatted_tracking_number}: drop it off by 10 October", $mail->subject);
         $this->assertSame('Hi Aisyah Rahman,', $mail->greeting);
-        $this->assertContains("Your parcel **{$order->formatted_tracking_number}** to Daniel Lim is still waiting to be dropped off.", $mail->introLines);
+        $this->assertContains("Your parcel **KT\u{2011}7Q4M92XD** to Daniel Lim is still waiting to be dropped off.", $mail->introLines);
         $this->assertContains("Drop-off deadline: **Saturday, 10\u{00A0}October\u{00A0}2026**. If it is not dropped off by then, the order is cancelled automatically.", $mail->introLines);
         $this->assertContains("Your drop-off branch: **Petaling Jaya - SS2**, 12, Jalan SS 2/67, SS 2, 47300\u{00A0}Petaling\u{00A0}Jaya.", $mail->introLines);
         $this->assertContains('Opening hours: Mon-Sat 9:00-21:00, Sun 10:00-18:00.', $mail->introLines);
         $this->assertSame('View your order', $mail->actionText);
         $this->assertSame(route('orders.show', $order), $mail->actionUrl);
         $this->assertContains('No longer sending it? You can cancel the order on the same page.', $mail->outroLines);
+    }
+
+    public function test_typed_text_cannot_add_markup_to_the_email()
+    {
+        $order = $this->orderCreatedAt(now()->subDays(6));
+        $markup = "[Sign in](https://evil.example/in) ![](https://evil.example/p) <b>now</b> |\n\n# URGENT";
+        // Older orders and accounts, from before these were checked, and a branch as an admin typed it.
+        $order->forceFill(['receiver_name' => "Daniel {$markup}"])->save();
+        $order->customer->forceFill(['name' => "Aisyah {$markup}"])->save();
+        $order->branch->forceFill([
+            'name' => "SS2 {$markup}",
+            'address' => "12, Jalan SS 2/67 {$markup}",
+            'opening_hours' => "Mon-Sat 9:00-21:00 {$markup}",
+        ])->save();
+
+        // As in production, where view:cache compiles the mail views before
+        // any email is sent, with plain HTML escaping only.
+        $compiler = app('view')->getEngineResolver()->resolve('blade')->getCompiler();
+        $view = app('view')->getFinder()->find('notifications::email');
+        $compiler->compile($view);
+
+        try {
+            $html = (string) (new DropOffReminder($order))->toMail($order->customer)->render();
+            $plain = 'Sign in (https://evil.example/in) ! (https://evil.example/p) b now /b # URGENT';
+
+            foreach ([
+                "Hi Aisyah {$plain},",
+                "to Daniel {$plain} is still waiting",
+                "SS2 {$plain}</strong>, 12, Jalan SS 2/67 {$plain}, 47300\u{00A0}Petaling\u{00A0}Jaya.",
+                "Opening hours: Mon-Sat 9:00-21:00 {$plain}.",
+            ] as $text) {
+                $this->assertStringContainsString($text, $html);
+            }
+
+            $this->assertStringNotContainsString('href="https://evil.example', $html);
+            $this->assertStringNotContainsString('<img', $html);
+            $this->assertStringNotContainsString('<b>now', $html);
+            $this->assertStringNotContainsString('<h1>URGENT', $html);
+        } finally {
+            // The next email compiles the view again, as in the other tests.
+            @unlink($compiler->getCompiledPath($view));
+        }
     }
 
     public function test_the_reminder_is_not_sent_once_the_parcel_is_dropped_off()
@@ -99,6 +141,7 @@ class DropOffReminderTest extends TestCase
         $customer = User::factory()->create(['name' => 'Aisyah Rahman', 'email' => 'aisyah@example.com']);
 
         return Order::factory()->for($customer, 'customer')->for($branch)->create([
+            'tracking_number' => 'KT7Q4M92XD',
             'receiver_name' => 'Daniel Lim',
             'created_at' => $createdAt,
         ]);

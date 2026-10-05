@@ -213,7 +213,7 @@ class DriverAssignmentNotificationTest extends TestCase
         $this->assertSame('Hi Ravi Kumar,', $mail->greeting);
         $this->assertSame([
             "A delivery has been added to your round for **Tuesday, 6\u{00A0}October\u{00A0}2026**.",
-            "Tracking number: **{$order->formatted_tracking_number}**",
+            "Tracking number: **KT\u{2011}7Q4M92XD**",
             "Collect it from: **Petaling Jaya - SS2**, 12, Jalan SS 2/67, SS 2, 47300\u{00A0}Petaling\u{00A0}Jaya.",
             "Delivery area: **Kuala Lumpur\u{00A0}60000**",
         ], $mail->introLines);
@@ -242,7 +242,7 @@ class DriverAssignmentNotificationTest extends TestCase
 
         $this->assertSame("Delivery {$order->formatted_tracking_number} removed from your round for Thursday, 8 October", $later->subject);
         $this->assertSame([
-            "Delivery **{$order->formatted_tracking_number}** has been removed from your round for **Thursday, 8\u{00A0}October\u{00A0}2026**. You no longer need to collect\u{00A0}it.",
+            "Delivery **KT\u{2011}7Q4M92XD** has been removed from your round for **Thursday, 8\u{00A0}October\u{00A0}2026**. You no longer need to collect\u{00A0}it.",
             "It was to be collected from Petaling Jaya - SS2 for delivery to Kuala Lumpur\u{00A0}60000.",
         ], $later->introLines);
         $this->assertSame('Open My jobs', $later->actionText);
@@ -260,7 +260,7 @@ class DriverAssignmentNotificationTest extends TestCase
 
         $this->assertSame("Delivery {$order->formatted_tracking_number} removed from your list", $mail->subject);
         $this->assertSame([
-            "Delivery **{$order->formatted_tracking_number}**, carried over from Friday, 2\u{00A0}October\u{00A0}2026, has been removed from your list. You no longer need to collect\u{00A0}it.",
+            "Delivery **KT\u{2011}7Q4M92XD**, carried over from Friday, 2\u{00A0}October\u{00A0}2026, has been removed from your list. You no longer need to collect\u{00A0}it.",
             "It was to be collected from Petaling Jaya - SS2 for delivery to Kuala Lumpur\u{00A0}60000.",
         ], $mail->introLines);
         // It was on today's list as carried over, so the link opens today's list.
@@ -279,7 +279,7 @@ class DriverAssignmentNotificationTest extends TestCase
         ];
 
         foreach ($emails as $html) {
-            $this->assertStringContainsString($order->formatted_tracking_number, (string) $html);
+            $this->assertStringContainsString("KT\u{2011}7Q4M92XD", (string) $html);
 
             foreach (['Daniel Lim', '+60127788990', '127788990', 'Jalan Datuk Sulaiman', 'Taman Tun Dr Ismail', 'Aisyah', 'aisyah@example.com', '123456789', 'Ceramic dinner set'] as $private) {
                 $this->assertStringNotContainsString($private, (string) $html);
@@ -417,6 +417,42 @@ class DriverAssignmentNotificationTest extends TestCase
         }
     }
 
+    public function test_the_drivers_name_and_the_branch_cannot_add_markup_to_the_emails()
+    {
+        [$order, $driver] = $this->ravisJob();
+        $markup = "[Sign in](https://evil.example/in) ![](https://evil.example/p) <b>now</b> |\n\n# URGENT";
+        // Typed by an admin: the driver's account and the branch.
+        $driver->forceFill(['name' => "Ravi {$markup}"])->save();
+        $order->branch->forceFill(['name' => "SS2 {$markup}", 'address' => "12, Jalan SS 2/67 {$markup}"])->save();
+        $day = CarbonImmutable::parse('2026-10-06');
+        $plain = 'Sign in (https://evil.example/in) ! (https://evil.example/p) b now /b # URGENT';
+
+        // As in production, where view:cache compiles the mail views before
+        // any email is sent, with plain HTML escaping only.
+        $compiler = app('view')->getEngineResolver()->resolve('blade')->getCompiler();
+        $view = app('view')->getFinder()->find('notifications::email');
+        $compiler->compile($view);
+
+        try {
+            $assigned = (string) (new DriverJobAssigned($order, $day))->toMail($driver)->render();
+            $removed = (string) (new DriverJobRemoved($order, $day))->toMail($driver)->render();
+
+            $this->assertStringContainsString("SS2 {$plain}</strong>, 12, Jalan SS 2/67 {$plain}, 47300\u{00A0}Petaling\u{00A0}Jaya.", $assigned);
+            $this->assertStringContainsString("It was to be collected from SS2 {$plain} for delivery", $removed);
+
+            foreach ([$assigned, $removed] as $html) {
+                $this->assertStringContainsString("Hi Ravi {$plain},", $html);
+                $this->assertStringNotContainsString('href="https://evil.example', $html);
+                $this->assertStringNotContainsString('<img', $html);
+                $this->assertStringNotContainsString('<b>now', $html);
+                $this->assertStringNotContainsString('<h1>URGENT', $html);
+            }
+        } finally {
+            // The next email compiles the view again, as in the other tests.
+            @unlink($compiler->getCompiledPath($view));
+        }
+    }
+
     public function test_the_emails_are_delivered_to_both_drivers()
     {
         $ravi = User::factory()->driver()->create(['email' => 'ravi@example.com']);
@@ -496,6 +532,7 @@ class DriverAssignmentNotificationTest extends TestCase
         $driver = User::factory()->driver()->create(['name' => 'Ravi Kumar']);
 
         $order = Order::factory()->for($customer, 'customer')->for($branch)->assigned($driver)->create([
+            'tracking_number' => 'KT7Q4M92XD',
             'receiver_name' => 'Daniel Lim',
             'receiver_phone' => '+60127788990',
             'address_line1' => 'No. 12, Jalan Datuk Sulaiman 1',

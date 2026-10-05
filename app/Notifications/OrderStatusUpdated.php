@@ -6,6 +6,8 @@ use App\Enums\OrderStatus;
 use App\Models\Order;
 use App\Models\User;
 use App\Support\MailDate;
+use App\Support\MailText;
+use App\Support\TrackingNumber;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -44,12 +46,13 @@ class OrderStatusUpdated extends Notification implements ShouldQueue
     public function toMail(User $notifiable): MailMessage
     {
         $trackingNumber = $this->order->formatted_tracking_number;
+        $bodyTrackingNumber = TrackingNumber::formatForMail($this->order->tracking_number);
         $headline = $this->rescheduled ? 'Delivery Rescheduled' : $this->status->label();
 
         $mail = (new MailMessage)
             ->subject("Parcel {$trackingNumber}: {$headline}")
-            ->greeting("Hi {$notifiable->name},")
-            ->line("Status update for parcel **{$trackingNumber}**: **{$headline}**")
+            ->greeting('Hi '.MailText::plain($notifiable->name).',')
+            ->line("Status update for parcel **{$bodyTrackingNumber}**: **{$headline}**")
             ->line($this->rescheduled ? 'Your delivery has been moved to a new date.' : $this->status->description());
 
         if ($this->status === OrderStatus::Assigned && $this->order->scheduled_for) {
