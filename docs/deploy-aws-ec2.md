@@ -216,6 +216,12 @@ npm run build
 ls $BACKEND/public/build/manifest.json
 ```
 
+The build also holds the camera scanner's WebAssembly runtimes, its OCR
+worker and the OCR models, about 44 MB in `public/build/assets`, and a gzip
+copy (`.gz`) of every built file over 1 KB, about 16 MB more. They are
+served from this server like every other built file, and browsers load the
+scanner's files only when someone opens the scanner.
+
 ## 7. Storage permissions
 
 Let PHP-FPM write `storage` and `bootstrap/cache`:
@@ -272,6 +278,30 @@ Check the app answers (expect `200`):
 ```sh
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost/up
 ```
+
+The site config sends the build's `.gz` copies with `gzip_static`, which
+Amazon Linux's nginx is built with (expect `with-http_gzip_static_module`):
+
+```sh
+nginx -V 2>&1 | grep -o with-http_gzip_static_module
+```
+
+Check a built WebAssembly file goes out as `application/wasm` (nginx's own
+`mime.types` maps `.wasm`; browsers need the type to compile it while it
+downloads), compressed and cached for a year, and that the compressed bytes
+are the build's `.gz` copy (the same length), not compressed on the fly:
+
+```sh
+ASSETS=$BACKEND/public/build/assets
+for FILE in $(ls $ASSETS | grep -m1 'zxing_reader.*\.wasm$') $(ls $ASSETS | grep -m1 'tiny_rec.*\.tar$'); do
+  curl -s -o /dev/null -D - -H 'Accept-Encoding: gzip' http://localhost/build/assets/$FILE | grep -iE 'content-type|content-encoding|content-length|cache-control'
+  stat -c '%s bytes in %n' $ASSETS/$FILE.gz
+done
+```
+
+Expect `application/wasm` for the `.wasm` (`application/octet-stream` for
+the model `.tar`), `gzip`, a `Content-Length` equal to the `.gz` file's
+size, and `max-age=31536000, immutable`.
 
 ## 10. Queue worker and scheduler
 
@@ -340,6 +370,13 @@ After it is created, **Behaviors → Create behavior** for the built assets:
 | Origin                 | the same origin           |
 | Viewer protocol policy | Redirect HTTP to HTTPS    |
 | Cache policy           | `CachingOptimized`        |
+
+`CachingOptimized` passes `Accept-Encoding` to the origin and keeps the
+compressed copy nginx sends. CloudFront only compresses files up to 10 MB
+itself, so the scanner's 25 MB WebAssembly runtime and 11 MB OCR worker
+rely on the build's `.gz` copies, which nginx also sends to CloudFront
+(`gzip_proxied any` in the site config, as CloudFront's requests carry a
+`Via` header).
 
 **DNS**: Route 53 → Create record → name `kotak`, type A, **Alias** → *Alias to
 CloudFront distribution* → pick the distribution.

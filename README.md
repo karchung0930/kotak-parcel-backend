@@ -114,11 +114,11 @@ Laravel application, with the same boundaries (see
 | Register and log in; each role only reaches its own screens                                                      | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                                         |
 | Create an order: delivery address, item name, weight and dimensions                                              | **Send a parcel** (`orders/Create`), with an optional receiver email → `CreateOrder`                                                                                                                                                                               |
 | Show an estimated price, a tracking number and the nearest branch                                                | Live estimate with the current rate card, from the chosen branch to the receiver's state (`RateCards`, `PriceCalculator`, mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                        |
-| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                                                                                                     |
+| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`): type the number, scan it with a USB scanner or with the camera (`TrackingScanner`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                 |
 | Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                                 |
 | Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline                 |
 | Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_. The driver is emailed the job, a driver it is taken from is told, and every driver with jobs gets a run sheet at 7:00 (`drivers:send-run-sheets`)                                                   |
-| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                                           |
+| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first; a scanned label opens its job or records its pick-up) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                     |
 | Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                                  |
 | Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                                     |
 | Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires. The receiver gets `ReceiverStatusUpdated` from dispatch to delivery, if the customer gave their email |
@@ -150,7 +150,9 @@ A parcel can weigh up to 30 kg, with each side up to 150 cm
   development (Docker, [`compose.yaml`](compose.yaml)), and for the tests
   locally and in CI.
 - **Frontend**: Vue 3.5 `<script setup>` with TypeScript and Tailwind CSS 4.
-  UI components are shadcn-vue on reka-ui, with lucide icons.
+  UI components are shadcn-vue on reka-ui, with lucide icons. The camera
+  scanner reads barcodes with zxing-wasm (ZXing-C++) and printed numbers
+  with PaddleOCR.js (ONNX Runtime Web), both in the browser.
 - **Routing**: Wayfinder generates typed route and form helpers, so no URL is
   hard-coded in the frontend.
 - **Tooling**: Pint and PHPStan here; Vite (through vite-plus, which also
@@ -531,6 +533,70 @@ The scheduler runs four jobs, all in Malaysia time and never overlapping:
   one email cannot be queued, the error is reported and its key released, so
   the other drivers still get theirs and a later run that day can send it.
 
+### Scanning tracking numbers with the camera
+
+Staff at the counter and drivers can scan a tracking number with the phone's
+camera (`TrackingScanner.vue` in the frontend). Everything happens in the
+browser: no picture is sent to the server, which only receives the number,
+through the same routes as a typed one.
+
+- **Where.** Beside the counter's search, where a match opens the parcel and
+  a miss keeps scanning with "No parcel matches" (a refused number is not
+  looked up again until "Scan again"; a lookup that failed for want of a
+  connection is tried again 2 seconds later, with the message up meanwhile).
+  On My jobs, where a label opens its job if it is on the day's list. On a
+  job waiting to be collected, where its own label records the pick-up (the
+  label in hand is the confirmation) and another parcel's label is refused.
+- **Barcode first.** The rear camera fills a full-screen sheet with a guide
+  box. About 10 times a second the box is cropped and read in a Web Worker by
+  zxing-wasm (ZXing-C++ compiled to WebAssembly, reader build). It accepts
+  the counter pass's Code 39, plus Code 128 and QR codes, and keeps only text
+  that is a whole tracking number. A barcode is looked up straight away,
+  under a green frame, and opens with a buzz and a short beep; a label the
+  page refuses gets neither.
+- **Then the printed number.** After 3 seconds without a barcode, hints
+  appear (closer, steady, and a light button where the camera has a torch),
+  and the box is read with PaddleOCR.js and the PP-OCRv6 tiny models
+  (ONNX Runtime's WebAssembly backend, in PaddleOCR.js's own worker). The
+  text is upper-cased, spaces go, O becomes 0, I and L become 1 and U becomes
+  V, and the first `KT-?` plus 8 Crockford characters counts. A number is
+  shown only once two of the latest 8 frames give the same reading, as a
+  single OCR reading can be wrong with high confidence, and it always
+  waits for a tap ("Read KT-… Open / Scan again"). There is no second
+  engine: when nothing can be read, the person types the number.
+- **Typing is always there.** "Type it instead" starts with what OCR read.
+  Without a camera (permission refused, none found, in use, or a browser
+  that cannot use it) the sheet says why in plain words and shows only the
+  typed entry. Esc closes the sheet, focus moves to the next step and back
+  to the button, and a live region says what happened.
+- **Assets.** The zxing and ONNX Runtime `.wasm` files, PaddleOCR.js's
+  worker and the two model archives are part of the frontend build: served
+  from `/build/assets` on this domain under hashed names and cached for a
+  year. Nothing comes from a CDN. They load only when the scanner opens,
+  both readers at once (the OCR runtime and models once its worker has
+  started, about 1.5 s later on a desktop). The build also writes a gzip
+  copy of each file, which nginx sends as it is (`gzip_static`):
+
+  | What                                     | Size    | Gzip copy | Loads                  |
+  | ---------------------------------------- | ------- | --------- | ---------------------- |
+  | Scanner component (with the three pages) | 25 KB   | 9 KB      | with the page          |
+  | Barcode worker and `zxing_reader.wasm`   | 0.99 MB | 0.43 MB   | when the scanner opens |
+  | PaddleOCR.js and its worker              | 11.5 MB | 3.6 MB    | when the scanner opens |
+  | ONNX Runtime `.wasm`                     | 25.0 MB | 5.8 MB    | when the scanner opens |
+  | PP-OCRv6 tiny models (`.tar`)            | 6.3 MB  | 5.7 MB    | when the scanner opens |
+
+  So the first scan downloads about 44 MB, 16 MB compressed; later visits
+  read them from the browser's cache, and the readers stay loaded for the
+  rest of the visit. If they cannot load (their files gone after a deploy,
+  say), the sheet says so once and keeps the typed entry. On a desktop a
+  barcode is read 0.2 to 0.5 s after the tap, and a printed number is shown
+  about 3.5 s after it (OCR starts at 3 s). A phone is slower, and its first
+  scan also waits for the downloads.
+- **Browser requirements.** The camera needs HTTPS (or localhost) and a
+  current browser: Chrome or Edge 91+, Safari 16.4+ (iOS 16.4) or Firefox
+  114+, for camera access, module workers and WebAssembly SIMD. Anything
+  older still gets the typed entry.
+
 ### Frontend
 
 The pages, layouts and components are described in the
@@ -657,8 +723,19 @@ Actions write only values they computed themselves, never raw request input.
 **Browser**
 
 - Every response sends `X-Content-Type-Options`, `X-Frame-Options: DENY`,
-  `Referrer-Policy` and a `Permissions-Policy` (camera and microphone off,
-  geolocation for this site only). HSTS is added over HTTPS.
+  `Referrer-Policy` and a `Permissions-Policy` (camera and geolocation for
+  this site only, for the scanner and the nearest branch; microphone off).
+  HSTS is added over HTTPS.
+- The camera scanner reads every frame in the browser: no picture is
+  uploaded or stored. The camera is on only while its picture shows: it
+  goes off for the typed entry, while the page is hidden and as soon as the
+  sheet closes.
+- There is no Content-Security-Policy yet. The pages would need
+  `worker-src 'self'`. The scanner's workers take their policy from their
+  own responses under `/build/` (sent by nginx, not the `SecurityHeaders`
+  middleware): if one is sent there, the zxing worker needs
+  `'wasm-unsafe-eval'`, and the OCR worker needs `'unsafe-eval'` too,
+  because the OpenCV.js inside it builds functions at run time.
 - CSRF protection comes from Laravel sessions.
 - The frontend never renders server data with `v-html`.
 - Only a small view of the signed-in user is shared with pages.
@@ -704,6 +781,10 @@ update script are in [`deploy/`](deploy).
 
 - **Environment**: `APP_ENV=production`, `APP_DEBUG=false`, an `https://`
   `APP_URL` and a fresh `APP_KEY`.
+- **Static files**: nginx serves `/build/` with a year's immutable caching
+  and sends the build's gzip copies (`gzip_static`) instead of compressing
+  each request ([`deploy/nginx.conf`](deploy/nginx.conf)); `.wasm` must go
+  out as `application/wasm`, which nginx's own `mime.types` does.
 - **Deploy steps** (what [`deploy/deploy.sh`](deploy/deploy.sh) runs):
     1. `composer install --no-dev --optimize-autoloader`
     2. `php artisan route:clear`, so the frontend build sees the current routes
@@ -748,8 +829,8 @@ update script are in [`deploy/`](deploy).
   second notification channel on the same queued listener is a small step.
 - **Online payment** (FPX or card) at booking, so the counter only weighs and
   settles any difference.
-- **Printed parcel labels and phone-camera scanning.** The customer's counter
-  pass already shows a Code 39 barcode that a USB scanner types into the
+- **Printed parcel labels.** The customer's counter pass already shows a
+  Code 39 barcode that a USB scanner, or the phone camera, reads into the
   counter search.
 - **Browser end-to-end tests** (Playwright) and automated accessibility
   checks (axe) for the main customer, counter, dispatch and driver flows.

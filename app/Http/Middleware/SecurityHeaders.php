@@ -20,8 +20,10 @@ class SecurityHeaders
         $response->headers->set('X-Content-Type-Options', 'nosniff');
         $response->headers->set('X-Frame-Options', 'DENY');
         $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
-        // Geolocation is allowed for this site only, to suggest the nearest branch.
-        $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
+        // The camera and geolocation are allowed for this site only: the camera
+        // to scan tracking numbers, geolocation to suggest the nearest branch.
+        // Embedded frames get neither, and nothing gets the microphone.
+        $response->headers->set('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
 
         // HSTS is only meaningful (and only safe to send) over HTTPS.
         if ($request->isSecure()) {
