@@ -127,7 +127,8 @@ class OrderFactory extends Factory
     }
 
     /**
-     * Scheduled for delivery today with a driver.
+     * Scheduled for delivery today with a driver. Given a place on the run
+     * (route_position), it is on its scheduled day's run unless told otherwise.
      */
     public function assigned(?User $driver = null): static
     {
@@ -135,6 +136,7 @@ class OrderFactory extends Factory
             'status' => OrderStatus::Assigned,
             'driver_id' => $driver ?? User::factory()->driver(),
             'scheduled_for' => today(config()->string('kotak.timezone'))->toDateString(),
+            'route_date' => fn (array $attributes) => isset($attributes['route_position']) ? $attributes['scheduled_for'] : null,
         ]);
     }
 

@@ -6,6 +6,7 @@ use App\Support\RateCards;
 use App\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Foundation\DevCommands;
 use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -40,6 +41,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
         $this->configureMail();
         $this->skipReservedTestAddresses();
+        $this->configureDevCommands();
     }
 
     /**
@@ -85,6 +87,20 @@ class AppServiceProvider extends ServiceProvider
 
         // Rate imports: each upload, sheet or mapping keeps a file or queues a job, per admin.
         RateLimiter::for('rate-imports', fn (Request $request) => Limit::perMinute(10)->by($request->user()?->id ?: $request->ip()));
+
+        // Moving a stop on My jobs, per driver: each move queues the run's new
+        // stop counts, and a stop can be moved up and down without end.
+        RateLimiter::for('driver-moves', fn (Request $request) => Limit::perMinute(60)->by($request->user()?->id ?: $request->ip()));
+    }
+
+    /**
+     * Have "composer run dev" (php artisan dev) listen to the live delivery
+     * progress queue before the default one, as the production worker does.
+     * Reverb registers its own server (reverb:start).
+     */
+    protected function configureDevCommands(): void
+    {
+        DevCommands::artisan('queue:listen --queue=live,default --tries=1 --timeout=0', 'queue');
     }
 
     /**

@@ -35,11 +35,13 @@ password **`password`**. Each role only sees its own screens:
   branches, rates (versioned price lists by zone and weight, imported from
   and downloaded as Excel or CSV) and site settings (drop-off limit,
   reminders, delivery attempts).
-- **Driver**: today's jobs, pick up, deliver with a photo or report a failed
-  delivery. New jobs and a run sheet every morning also arrive by email.
+- **Driver**: today's jobs in the order they choose, pick up, deliver with
+  a photo or report a failed delivery. New jobs and a run sheet every morning
+  also arrive by email.
 
 Tracking needs no account: open <https://dataflows.karchung.dev/track> and
-enter any number below.
+enter any number below. Out for delivery, a parcel shows how many stops the
+driver makes before it, and the count changes as the driver goes.
 
 | Role     | Email                        | Notes                                              |
 | -------- | ---------------------------- | -------------------------------------------------- |
@@ -65,6 +67,13 @@ dinner set from Aisyah Rahman to Daniel Lim in Taman Tun Dr Ismail, out for
 delivery today. On your own machine, `php artisan db:seed --class=DemoSeeder`
 loads the same data (see [Running it locally](#running-it-locally)).
 
+The sample parcel is Ravi's second stop today, so its tracking page says
+"Your parcel is stop 2 — 1 stop before yours". Keep it open, sign in as
+`driver.ravi@kotak.test` in another browser, tap **Reorder stops** on My jobs
+and move it up: the tracking page turns to "You're next" without reloading.
+Ravi also has a job left over from yesterday, `KT-00000017`, marked Overdue
+at the top of his list; he can move it among today's stops like any other.
+
 Seven orders, the sample parcel among them, have a receiver email (at
 `@kotak.test`, so nothing is actually sent). It shows on the order page for
 the customer, staff and admins; assigning `KT-00000004` in Dispatch would
@@ -78,17 +87,17 @@ announces. **Download template** on Rates gives the current rates as an Excel
 workbook; change a few prices and bring it back with **Import** to see a
 spreadsheet become a draft.
 
-| Status             | Tracking numbers                                                          | Try it as                                                                                         |
-| ------------------ | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Created            | `KT-00000002`, `KT-00000007`, `KT-00000014`, `KT-00000022`, `KT-00000023` | Staff: drop it off at the counter. 22 and 23 are due a reminder and expire 3 nights after seeding |
-| Dropped Off        | `KT-00000008`, `KT-00000015`                                              | Staff (Cheras, Bangsar): take payment                                                             |
-| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`, `KT-00000025`                | Admin: assign a driver in Dispatch. 25 goes to Kuching, priced with the zone rates                |
-| Assigned           | `KT-00000010` (Siti), `KT-00000017`, `KT-00000018` (Ravi)                 | Driver: pick up                                                                                   |
-| Picked Up          | `KT-7Q4M92XD` (Ravi), `KT-00000013` (Faizal)                              | Driver: deliver or record a failure                                                               |
-| Delivered          | `KT-00000003`, `KT-00000011`, `KT-00000019`                               | Anyone: tracking page with proof of delivery                                                      |
-| Delivery Failed    | `KT-00000005`, `KT-00000020`                                              | Admin: reassign or return to sender                                                               |
-| Returned to Sender | `KT-00000012`                                                             |                                                                                                   |
-| Cancelled          | `KT-00000006`, `KT-00000021`, `KT-00000024` (never dropped off)           |                                                                                                   |
+| Status             | Tracking numbers                                                           | Try it as                                                                                         |
+| ------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Created            | `KT-00000002`, `KT-00000007`, `KT-00000014`, `KT-00000022`, `KT-00000023`  | Staff: drop it off at the counter. 22 and 23 are due a reminder and expire 3 nights after seeding |
+| Dropped Off        | `KT-00000008`, `KT-00000015`                                               | Staff (Cheras, Bangsar): take payment                                                             |
+| Paid               | `KT-00000004`, `KT-00000009`, `KT-00000016`, `KT-00000025`                 | Admin: assign a driver in Dispatch. 25 goes to Kuching, priced with the zone rates                |
+| Assigned           | `KT-00000010` (Siti), `KT-00000017` (Ravi, due yesterday)                  | Driver: pick up                                                                                   |
+| Picked Up          | `KT-00000018`, `KT-7Q4M92XD` (Ravi, in that order), `KT-00000013` (Faizal) | Driver: deliver or record a failure                                                               |
+| Delivered          | `KT-00000003`, `KT-00000011`, `KT-00000019`                                | Anyone: tracking page with proof of delivery                                                      |
+| Delivery Failed    | `KT-00000005`, `KT-00000020`                                               | Admin: reassign or return to sender                                                               |
+| Returned to Sender | `KT-00000012`                                                              |                                                                                                   |
+| Cancelled          | `KT-00000006`, `KT-00000021`, `KT-00000024` (never dropped off)            |                                                                                                   |
 
 ## What it is
 
@@ -99,9 +108,10 @@ online parcel delivery system with four roles.
 2. **Branch staff** weigh the parcel at the counter and take payment.
 3. An **admin** assigns a truck driver and a delivery date.
 4. The **driver** picks the parcel up and delivers it.
-5. The customer can track the parcel at any time and gets an email when its
-   status changes. The receiver hears about the delivery too, when the
-   customer gives their email address.
+5. The customer can track the parcel at any time, with the stops before it
+   once it is out for delivery, and gets an email when its status changes.
+   The receiver hears about the delivery too, when the customer gives their
+   email address.
 
 The scenario was drawn as six microservices. Here they are modules of one
 Laravel application, with the same boundaries (see
@@ -109,20 +119,20 @@ Laravel application, with the same boundaries (see
 
 ### How each requirement maps to the app
 
-| Requirement                                                                                                      | Where                                                                                                                                                                                                                                                              |
-| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Register and log in; each role only reaches its own screens                                                      | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                                         |
-| Create an order: delivery address, item name, weight and dimensions                                              | **Send a parcel** (`orders/Create`), with an optional receiver email → `CreateOrder`                                                                                                                                                                               |
-| Show an estimated price, a tracking number and the nearest branch                                                | Live estimate with the current rate card, from the chosen branch to the receiver's state (`RateCards`, `PriceCalculator`, mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                        |
-| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`): type the number, scan it with a USB scanner or with the camera (`TrackingScanner`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                 |
-| Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                                 |
-| Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline                 |
-| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_. The driver is emailed the job, a driver it is taken from is told, and every driver with jobs gets a run sheet at 7:00 (`drivers:send-run-sheets`)                                                   |
-| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first; a scanned label opens its job or records its pick-up) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                     |
-| Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                                  |
-| Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                                     |
-| Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires. The receiver gets `ReceiverStatusUpdated` from dispatch to delivery, if the customer gave their email |
-| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards, imported from and downloaded as spreadsheets in `admin/rates/imports`), `admin/Settings` (with drop-off timing)                           |
+| Requirement                                                                                                      | Where                                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Register and log in; each role only reaches its own screens                                                      | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                                                   |
+| Create an order: delivery address, item name, weight and dimensions                                              | **Send a parcel** (`orders/Create`), with an optional receiver email → `CreateOrder`                                                                                                                                                                                         |
+| Show an estimated price, a tracking number and the nearest branch                                                | Live estimate with the current rate card, from the chosen branch to the receiver's state (`RateCards`, `PriceCalculator`, mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                                  |
+| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`): type the number, scan it with a USB scanner or with the camera (`TrackingScanner`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                           |
+| Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                                           |
+| Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline                           |
+| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_. The driver is emailed the job, a driver it is taken from is told, and every driver with jobs gets a run sheet at 7:00 (`drivers:send-run-sheets`)                                                             |
+| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first; a scanned label opens its job or records its pick-up; today's stops can be put in order, `MoveJob`) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_ |
+| Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                                            |
+| Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`). Out for delivery, both show the stops before the parcel, live over Reverb (`DeliveryProgress`)               |
+| Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires. The receiver gets `ReceiverStatusUpdated` from dispatch to delivery, if the customer gave their email           |
+| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards, imported from and downloaded as spreadsheets in `admin/rates/imports`), `admin/Settings` (with drop-off timing)                                     |
 
 **Pricing** comes from the rate card in effect (see
 [Rate cards](#rate-cards)). The chargeable weight is the greater of:
@@ -145,14 +155,16 @@ A parcel can weigh up to 30 kg, with each side up to 150 cm
 
 - **Backend**: PHP 8.3+, Laravel 13, Laravel Fortify (login, registration,
   email verification, two-factor codes, passkeys), Inertia 3, OpenSpout
-  (Excel and CSV files, read and written as streams).
+  (Excel and CSV files, read and written as streams), Laravel Reverb
+  (WebSockets, for live delivery progress).
 - **Database**: MySQL 8.4 LTS everywhere: in production, for local
   development (Docker, [`compose.yaml`](compose.yaml)), and for the tests
   locally and in CI.
 - **Frontend**: Vue 3.5 `<script setup>` with TypeScript and Tailwind CSS 4.
   UI components are shadcn-vue on reka-ui, with lucide icons. The camera
   scanner reads barcodes with zxing-wasm (ZXing-C++) and printed numbers
-  with PaddleOCR.js (ONNX Runtime Web), both in the browser.
+  with PaddleOCR.js (ONNX Runtime Web), both in the browser. Laravel Echo
+  with pusher-js listens to Reverb.
 - **Routing**: Wayfinder generates typed route and form helpers, so no URL is
   hard-coded in the frontend.
 - **Tooling**: Pint and PHPStan here; Vite (through vite-plus, which also
@@ -196,8 +208,8 @@ likely Tracking) can be split out later.
 | Users        | `User`, `Role`, Fortify actions, `EnsureUserHasRole`, `EnsureUserIsActive`, `UserPolicy`, `Admin\UserController`                                                                                                                                                                                                                                                                                    | auth, settings, admin users                 |
 | Orders       | `Order`, `Actions/Orders/*`, `OrderStatusService`, `OrderStatus`, `TrackingNumber`, `OrderPolicy`, `DropOffTiming`                                                                                                                                                                                                                                                                                  | Send a parcel, My parcels, counter weighing |
 | Payments     | `Payment`, `Actions/Payments/RecordPayment`, `PaymentPolicy`                                                                                                                                                                                                                                                                                                                                        | counter payment, receipt                    |
-| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*`, `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`                                                                                                                                                                                                                                                                            | Dispatch, My jobs                           |
-| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`                                                                                                                                                                                                                                                                                                                  | Track                                       |
+| Delivery     | `DeliveryAttempt`, `Actions/Delivery/*` (`MoveJob` puts a driver's stops in order), `Admin\DispatchController`, `Driver\JobController`, `ProofOfDeliveryController`                                                                                                                                                                                                                                 | Dispatch, My jobs                           |
+| Tracking     | `OrderStatusEvent` (append-only history), `TrackingController`, `TrackingResource`; live stops: `DeliveryProgress`, `SendDeliveryProgress`, `BroadcastDeliveryProgress`, `DeliveryProgressUpdated`, `OrderChannel`                                                                                                                                                                                  | Track                                       |
 | Notification | `OrderStatusChanged`, `SendOrderStatusNotification`, `OrderStatusUpdated`, `DropOffReminder`, `DeliveryAssigned`, `SendDriverAssignmentNotifications`, `DriverJobAssigned`, `DriverJobRemoved`, `DriverRunSheet`                                                                                                                                                                                    | email                                       |
 | Branches     | `Branch`, `Geo`, `BranchPolicy`, `Public\BranchController`, `Admin\BranchController`                                                                                                                                                                                                                                                                                                                | Branches, admin branches                    |
 | Settings     | `Setting`, `Settings`, `SettingPolicy`, `Actions/Settings/UpdateSettings`, `Admin\SettingsController`                                                                                                                                                                                                                                                                                               | Site settings                               |
@@ -501,14 +513,15 @@ Each falls back to its default in `config/kotak.php` until it is saved:
   the limit counts them. It is worked out in PHP from `created_at` and
   `dropped_off_at`, without database date functions.
 
-The scheduler runs four jobs, all in Malaysia time and never overlapping:
+The scheduler runs five jobs, all in Malaysia time and never overlapping:
 
-| Command                   | When  | What it does                                                                                                                        |
-| ------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `orders:remind-unclaimed` | 09:00 | Emails a `DropOffReminder` from `drop_off_reminder_days_before` days before the order's deadline day                                |
-| `orders:expire-unclaimed` | 00:00 | Cancels orders still not dropped off once their deadline day has ended (`ExpireUnclaimedOrders`, `Order::unclaimed`)                |
-| `drivers:send-run-sheets` | 07:00 | Emails a `DriverRunSheet` to each driver with jobs: today's My jobs list, overdue jobs included, by pickup branch (`SendRunSheets`) |
-| `rates:prune-imports`     | 03:00 | Deletes uploaded rate spreadsheets older than 7 days (`PruneRateImportFiles`)                                                       |
+| Command                       | When  | What it does                                                                                                                                             |
+| ----------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `orders:remind-unclaimed`     | 09:00 | Emails a `DropOffReminder` from `drop_off_reminder_days_before` days before the order's deadline day                                                     |
+| `orders:expire-unclaimed`     | 00:00 | Cancels orders still not dropped off once their deadline day has ended (`ExpireUnclaimedOrders`, `Order::unclaimed`)                                     |
+| `deliveries:refresh-progress` | 00:01 | Sends the parcels on the van their new stops once yesterday's open jobs have joined the day's lists, only where they changed (`RefreshDeliveryProgress`) |
+| `drivers:send-run-sheets`     | 07:00 | Emails a `DriverRunSheet` to each driver with jobs: today's My jobs list, overdue jobs included, by pickup branch (`SendRunSheets`)                      |
+| `rates:prune-imports`         | 03:00 | Deletes uploaded rate spreadsheets older than 7 days (`PruneRateImportFiles`)                                                                            |
 
 - Each reminder locks the order and sets `drop_off_reminded_at` in one
   transaction before the email is queued, so a second or overlapping run
@@ -597,6 +610,105 @@ through the same routes as a typed one.
   114+, for camera access, module workers and WebAssembly SIMD. Anything
   older still gets the typed entry.
 
+### Live delivery progress
+
+While a parcel is out for delivery, its tracking page and its customer's
+order page say how many stops the driver makes before it: "Your parcel is
+stop 3 — 2 stops before yours", or "You're next". It is only a count: never
+where the driver is, and nothing about the other parcels or their
+receivers. It changes as the driver goes, over Laravel Reverb (WebSockets).
+
+- **The driver's order.** Each open job has a place on one of its driver's
+  runs (`orders.route_position`) and the day of that run
+  (`orders.route_date`). A new assignment joins the end of the run for its
+  scheduled day, after the last place on it (`AssignDriver`, which locks
+  the run while it reads that place). A delivered or failed job leaves the
+  run, and one handed to another driver joins theirs. On **My jobs** the
+  driver taps **Reorder stops** and moves today's stops with **Move up**
+  and **Move down** (`MoveJob`): 44px buttons whose names say which stop.
+  The pressed button stays under the thumb and keeps the focus, so each tap
+  moves the same stop one more place; a spinner shows while a move is
+  saved, and the new place is read out. The action checks the job is the
+  driver's own and on today's list, locks the whole list in one query and
+  numbers it 1, 2, 3… again, so the places stay contiguous. Moves are
+  limited to 60 a minute per driver, as each one queues new counts. My
+  jobs, the run sheet and the count all read the list from
+  `Order::jobListFor()`, where two stops in the same place (two dispatches
+  at the same moment) follow the postcode. A migration numbered the runs
+  already open by postcode, the order My jobs used before. On My jobs only
+  the parcels on the van carry a stop number, which the server works out
+  as it does the customer's, so "stop 2" is the same parcel on both screens.
+  The reads that lock a run find its stops through an index on (driver,
+  status, run day), so they hold only that driver's open jobs.
+- **Jobs carried over join today's run.** Today's list starts with the jobs
+  left open on earlier days that are not on today's run yet (their
+  `route_date` is an earlier day), in the order they had: by the run they
+  were last on, then place, then postcode. Today's stops follow in the
+  driver's order. A move numbers the whole list, carried-over jobs included,
+  and puts it all on today's run, so an overdue job moves among today's
+  stops like any other and keeps its place, overnight too. When the driver
+  leaves an overdue parcel until last, it counts last, and the customers
+  before it are told the right number. Later days list only their own run;
+  an earlier day lists its jobs still open in today's order, with the same
+  stop numbers as today.
+- **After midnight** the jobs left open yesterday join the new day's list,
+  ahead of its stops, so a parcel collected early for today now has more
+  stops before it. `deliveries:refresh-progress` (00:01) works out every
+  run with a parcel on the van again through `BroadcastDeliveryProgress`,
+  so only the parcels whose numbers changed hear about it.
+- **Stops before yours** (`DeliveryProgress`): the same driver's parcels on
+  the van (Picked Up) before this one on that day's list. One still to
+  collect is not delivered before it, so it does not count.
+- **Live updates.** `SendDeliveryProgress` hears a parcel picked up,
+  delivered or not delivered (`OrderStatusChanged`), a delivery assigned,
+  moved or handed to another driver (`DeliveryAssigned`, which knows the run
+  it left) and a reordered run (`DeliveryRunReordered`), each after commit.
+  On a queue of its own (`live`), which the worker takes before the emails
+  and imports, it works the run's stops out again
+  (`BroadcastDeliveryProgress`) and sends each parcel whose numbers changed
+  a `DeliveryProgressUpdated` with `{position, stops_before, status}` and
+  nothing else. The last numbers Reverb took for each parcel are kept in
+  the cache for two days, so the parcels whose numbers stayed the same hear
+  nothing, and a lock per driver keeps the last message in line with the
+  database when changes come quickly (a run another change holds is tried
+  again from the queue). A parcel that left the run hears its new status
+  without a stop.
+- **Channels.** Public tracking needs no sign-in, so its channel is
+  `tracking.` and an HMAC-SHA256 of the tracking number with the app key: it
+  cannot be worked out from a tracking number, Reverb never lists channels
+  to browsers, and only the parcel's tracking page is given it. The
+  customer's order page listens on the private `orders.{id}` instead, which
+  `routes/channels.php` (`OrderChannel`) opens only to the customer who
+  placed the order. A page listens while its parcel is on a run.
+- **No polling.** A page shows the count it came with, then follows the
+  messages. Echo (pusher-js, WebSocket transports only) reconnects by
+  itself. Each time the channel is subscribed, when the page opens and
+  again after a lost connection is back, the page fetches its props once
+  with an Inertia partial reload, as a message sent before the
+  subscription was in place never reaches it. A new status (picked up,
+  delivered) also fetches the page once, so the rest of it moves on too. A
+  fetch that a message overtakes keeps the message's numbers and runs once
+  more, so an older count never comes back. Nothing runs on a timer. When
+  the connection is down for longer than a blip (pusher-js gives up after
+  about ten seconds) or the channel is refused, the line adds "as of
+  09:42", the time of its last update.
+- **When Reverb is down** a delivery still saves: the message's error is
+  reported and nothing else fails. Numbers Reverb did not take are not
+  remembered as sent, so each parcel gets them the next time its run is
+  worked out.
+- **Reverb** runs as its own process (`php artisan reverb:start`, which
+  `composer run dev` starts too, on port 8080). Laravel sends it the
+  messages directly; in production nginx passes the browsers' `/app`
+  WebSockets on to it at 127.0.0.1, behind the site's TLS (see
+  [Deployment](#deployment)). It listens on 127.0.0.1 unless
+  `REVERB_SERVER_HOST` says otherwise. Pages may only connect from the
+  site's own host (the host of `APP_URL`, or `REVERB_ALLOWED_ORIGINS`), and
+  browsers cannot send each other messages. Reverb takes at most 5,000 open
+  pages and closes a connection that sends more than 30 messages a minute
+  (a page sends one or two). The frontend's build gets the key, host, port
+  and scheme as `VITE_REVERB_*`, and Echo and pusher-js (73 KB, 21 KB
+  compressed) load only on the pages that listen.
+
 ### Frontend
 
 The pages, layouts and components are described in the
@@ -639,6 +751,10 @@ Actions write only values they computed themselves, never raw request input.
   branch and the history. It never shows names, phone numbers, email
   addresses or street addresses.
 - Lookups are throttled to 30 a minute per IP address.
+- Out for delivery, the page gets the parcel's stop and the name of a
+  channel with its live updates: an HMAC of the tracking number with the app
+  key, so it cannot be guessed or listed. The messages carry only the stop
+  and the status.
 - Tracking numbers are 8 random Crockford base32 characters (32⁸ ≈ 1.1
   trillion), so they are hard to guess.
 - Order creation is also throttled, to 10 a minute per customer.
@@ -736,6 +852,13 @@ Actions write only values they computed themselves, never raw request input.
   middleware): if one is sent there, the zxing worker needs
   `'wasm-unsafe-eval'`, and the OCR worker needs `'unsafe-eval'` too,
   because the OpenCV.js inside it builds functions at run time.
+- Reverb accepts WebSocket connections only from the site's own host, and
+  no messages from browsers (`config/reverb.php`). It caps the open
+  connections and closes one that sends too many messages, and listens on
+  127.0.0.1 only, behind nginx. The customer's private channel is signed by
+  `/broadcasting/auth`, which checks `OrderChannel`. `deploy.sh` and
+  `env.sh` refuse to run while `.env` still has the example Reverb
+  credentials from `.env.example`, which anyone can read.
 - CSRF protection comes from Laravel sessions.
 - The frontend never renders server data with `v-html`.
 - Only a small view of the signed-in user is shared with pages.
@@ -774,8 +897,9 @@ and the tests.
 The live demo runs exactly this setup.
 [docs/deploy-aws-ec2.md](docs/deploy-aws-ec2.md) walks through putting the
 site on one AWS EC2 instance running Amazon Linux 2023 on Graviton (arm64):
-nginx, PHP-FPM 8.4, MySQL 8.4 LTS on the instance, a systemd queue worker and
-scheduler timer, CloudFront in front, and Amazon SES for email. The nginx
+nginx, PHP-FPM 8.4, MySQL 8.4 LTS on the instance, a systemd queue worker,
+scheduler timer and Reverb service, CloudFront in front, and Amazon SES for
+email. The nginx
 config, systemd units, the one-shot [`install.sh`](deploy/install.sh) and the
 update script are in [`deploy/`](deploy).
 
@@ -790,7 +914,8 @@ update script are in [`deploy/`](deploy).
     2. `php artisan route:clear`, so the frontend build sees the current routes
     3. In the frontend: `npm ci && npm run build`
     4. `php artisan migrate --force`
-    5. `php artisan optimize` and `php artisan queue:restart`
+    5. `php artisan optimize`, `php artisan queue:restart` and
+       `php artisan reverb:restart`
 - **Seeding.** The demo seeder throws when `APP_ENV=production`. The live
   demo is a short-lived showcase, so [`deploy/install.sh`](deploy/install.sh)
   seeds it once with `--env=staging`. A real installation skips the seeder and
@@ -801,10 +926,20 @@ update script are in [`deploy/`](deploy).
 - **HTTPS**: serve only over HTTPS and set `SESSION_SECURE_COOKIE=true`. HSTS
   is sent automatically on secure requests. Behind a load balancer, configure
   the trusted proxies so Laravel sees HTTPS.
-- **Queue worker**: keep `php artisan queue:work --tries=3` running under
-  Supervisor or systemd. It sends the emails, and reads and checks rate
-  imports. Run `php artisan queue:restart` on each deploy. The
-  `database` queue is fine to start with; Redis is the step up.
+- **Queue worker**: keep
+  `php artisan queue:work --queue=live,default --sleep=1 --tries=3` running
+  under Supervisor or systemd. It sends the emails, reads and checks rate
+  imports, and works out the live stop counts, which have the `live` queue
+  to themselves so they never wait behind a batch of emails. Run
+  `php artisan queue:restart` on each deploy. The `database` queue is fine
+  to start with; Redis is the step up.
+- **Reverb**: keep `php artisan reverb:start --host=127.0.0.1 --port=8080`
+  running (a systemd service in [`deploy/systemd`](deploy/systemd)), and let
+  nginx pass `/app` on to it with the WebSocket `Upgrade` headers, behind
+  the site's HTTPS. Set `BROADCAST_CONNECTION=reverb` and random
+  `REVERB_APP_*` credentials, and give the frontend's build the key and the
+  site's address as `VITE_REVERB_*`. Run `php artisan reverb:restart` on
+  each deploy.
 - **Scheduler**: run `php artisan schedule:run` every minute (a systemd timer
   in [`deploy/systemd`](deploy/systemd), or cron). It emails drivers their
   run sheets at 7:00, sends drop-off reminders at 9:00, cancels unclaimed

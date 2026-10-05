@@ -71,18 +71,27 @@ class AssignDriver
             $previousDriver = $order->status === OrderStatus::Assigned ? $order->driver : null;
             $previousDate = $previousDriver !== null ? $order->scheduled_for : null;
 
+            // The delivery joins the end of that driver's run for the day; the
+            // driver can move it up on My jobs (MoveJob). Reading the last place
+            // locks the run's stops, so a deadlock with another change to the
+            // same run is tried again (up to three attempts).
             $order = $this->statuses->transition(
                 $order,
                 OrderStatus::Assigned,
                 $admin,
                 $this->note($order, $scheduledFor, $sameDay),
-                ['driver_id' => $driver->id, 'scheduled_for' => $scheduledFor->toDateString()],
+                [
+                    'driver_id' => $driver->id,
+                    'scheduled_for' => $scheduledFor->toDateString(),
+                    'route_position' => Order::nextRoutePosition($driver, $scheduledFor),
+                    'route_date' => $scheduledFor->toDateString(),
+                ],
             );
 
             DeliveryAssigned::dispatch($order, $driver, $previousDriver, $previousDate);
 
             return $order;
-        });
+        }, 3);
     }
 
     /**

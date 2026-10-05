@@ -1,5 +1,8 @@
 # /etc/systemd/system/kotak-worker.service
-# Sends the queued emails and reads rate imports. See docs/deploy-aws-ec2.md.
+# Sends the queued emails, reads rate imports and works out the live stop
+# counts. See docs/deploy-aws-ec2.md. The stop counts have a queue of their
+# own ("live"), taken before the emails and imports ("default"), and an
+# empty queue is checked every second, so a new count goes out at once.
 # queue:work exits normally after --max-time or a queue:restart, so it needs
 # Restart=always, not on-failure.
 [Unit]
@@ -12,7 +15,7 @@ User=apache
 Group=apache
 UMask=0002
 WorkingDirectory=/var/www/kotak/kotak-parcel-backend
-ExecStart=/usr/bin/php artisan queue:work --tries=3 --max-time=3600
+ExecStart=/usr/bin/php artisan queue:work --queue=live,default --sleep=1 --tries=3 --max-time=3600
 Restart=always
 RestartSec=5
 TimeoutStopSec=120

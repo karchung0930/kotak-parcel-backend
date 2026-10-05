@@ -14,6 +14,14 @@ main() {
     # Files created here stay writable for the web server's group.
     umask 0002
 
+    # Reverb is reachable from the internet, and its secret signs the
+    # customers' private channels: never run on the example credentials
+    # from .env.example, which anyone can read.
+    if grep -qE '^REVERB_APP_(KEY|SECRET)=kotak-local-' "$backend/.env"; then
+        echo "Give Reverb its own credentials first (docs/deploy-aws-ec2.md, step 4). Nothing was changed." >&2
+        exit 1
+    fi
+
     # A failed step leaves the site in maintenance mode, so it never serves
     # new code with the old database schema or assets.
     trap "echo 'Deploy failed; the site is still down for maintenance. Fix the error and run this script again, or bring the site back with: cd $backend && php artisan view:clear && php artisan up' >&2" ERR
@@ -39,6 +47,10 @@ main() {
     php artisan migrate --force
     php artisan optimize
     php artisan queue:restart
+    # Reverb finishes and exits; systemd starts it again with the new code
+    # (deploy/systemd/kotak-reverb.service). Open pages reconnect by
+    # themselves and fetch the current numbers once.
+    php artisan reverb:restart
     sudo systemctl reload php-fpm
     php artisan up
 }

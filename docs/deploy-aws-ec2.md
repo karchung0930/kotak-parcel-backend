@@ -1,12 +1,14 @@
 # Deploying Kotak on AWS EC2
 
 One EC2 instance (Amazon Linux 2023, arm64) runs nginx, PHP-FPM 8.4, MySQL 8.4,
-the queue worker and the scheduler. CloudFront sits in front of it, and SES
-sends the email. Run every block as `ec2-user`, in order.
+the queue worker, the scheduler and Laravel Reverb (the WebSocket server for
+live delivery progress). CloudFront sits in front of it, and SES sends the
+email. Run every block as `ec2-user`, in order.
 
 ```
 Browser ──HTTPS──> CloudFront (kotak.example.com) ──HTTPS──> EC2 nginx (origin.kotak.example.com)
-                                                              └─> Laravel ──SMTP──> SES (Singapore)
+                                                              ├─> Laravel ──SMTP──> SES (Singapore)
+                                                              └─> /app: Reverb on 127.0.0.1:8080 (WebSockets)
 ```
 
 The examples use `kotak.example.com`; replace it with your own domain
@@ -152,6 +154,32 @@ sed -i -e "s|^APP_ENV=.*|APP_ENV=production|" \
 chgrp apache .env && chmod 640 .env
 ```
 
+Give Reverb random credentials in place of the local ones from
+`.env.example`, which anyone can read: Reverb is reachable from the
+internet, and its secret signs the customers' private channels, so
+`deploy.sh` and `env.sh` refuse to run while the example ones are there.
+Laravel sends it the messages on `127.0.0.1:8080`, where it listens;
+browsers reach it through nginx (step 9):
+
+```sh
+cd $BACKEND
+sed -i -e "s|^BROADCAST_CONNECTION=.*|BROADCAST_CONNECTION=reverb|" \
+       -e "s|^REVERB_APP_ID=.*|REVERB_APP_ID=$(php -r 'echo random_int(100000, 999999);')|" \
+       -e "s|^REVERB_APP_KEY=.*|REVERB_APP_KEY=$(php -r 'echo bin2hex(random_bytes(10));')|" \
+       -e "s|^REVERB_APP_SECRET=.*|REVERB_APP_SECRET=$(php -r 'echo bin2hex(random_bytes(20));')|" \
+       -e "s|^REVERB_HOST=.*|REVERB_HOST=127.0.0.1|" \
+       -e "s|^REVERB_PORT=.*|REVERB_PORT=8080|" \
+       -e "s|^REVERB_SCHEME=.*|REVERB_SCHEME=http|" \
+       -e "s|^REVERB_SERVER_HOST=.*|REVERB_SERVER_HOST=127.0.0.1|" \
+       -e "s|^REVERB_SERVER_PORT=.*|REVERB_SERVER_PORT=8080|" .env
+```
+
+Reverb takes at most 5,000 open pages at once, below the 10,000 file
+descriptors its service may use, and closes a connection that sends more
+than 30 messages a minute (a page sends one or two). Change them with
+`REVERB_APP_MAX_CONNECTIONS` and `REVERB_APP_RATE_LIMIT_MAX_ATTEMPTS` if
+ever needed.
+
 ## 5. Database (MySQL 8.4)
 
 Listen on localhost only (and turn off the unused X protocol), then start
@@ -207,6 +235,20 @@ php artisan db:show | head -n 4
 
 ## 6. Build the frontend
 
+The build puts the address of Reverb in the pages: the site's own address
+over HTTPS, and the key from the backend's `.env`. Write it into the
+frontend's `.env`:
+
+```sh
+cd $FRONTEND
+cat >> .env <<EOF
+VITE_REVERB_APP_KEY=$(grep '^REVERB_APP_KEY=' $BACKEND/.env | cut -d= -f2-)
+VITE_REVERB_HOST=$DOMAIN
+VITE_REVERB_PORT=443
+VITE_REVERB_SCHEME=https
+EOF
+```
+
 Install the packages and build into `$BACKEND/public/build`:
 
 ```sh
@@ -247,11 +289,13 @@ sudo -u apache bash -c 'umask 0002 && php artisan db:seed --env=staging --force'
 ```
 
 Drop the ~135 emails the seeder queued (status updates, receivers' delivery
-updates and drivers' new jobs), so they are never sent:
+updates and drivers' new jobs), so they are never sent, and its live
+progress messages (queue `live`):
 
 ```sh
 cd $BACKEND
 php artisan queue:clear --force
+php artisan queue:clear --queue=live --force
 ```
 
 Cache the configuration and routes:
@@ -303,20 +347,42 @@ Expect `application/wasm` for the `.wasm` (`application/octet-stream` for
 the model `.tar`), `gzip`, a `Content-Length` equal to the `.gz` file's
 size, and `max-age=31536000, immutable`.
 
-## 10. Queue worker and scheduler
+The site config also passes `/app` on to Reverb with the WebSocket
+`Upgrade` headers, so browsers reach it at the site's own address and over
+its HTTPS. Only that path goes through: Laravel sends Reverb its messages on
+`127.0.0.1:8080` directly. Reverb starts in the next step.
+
+## 10. Queue worker, scheduler and Reverb
 
 Install and start the worker (status, reminder, receiver and driver emails,
-and reading and checking rate imports) and the scheduler timer. The timer runs
+reading and checking rate imports, and working out the stops of live
+delivery progress), the scheduler timer and Reverb. The timer runs
 `php artisan schedule:run` every minute, which emails drivers their run sheets
 at 7:00, sends the drop-off reminders at 9:00, cancels unclaimed orders at
-midnight and deletes uploaded rate spreadsheets older than a week at 3:00,
-Malaysia time:
+midnight, sends the open tracking and order pages their new stop counts at
+00:01, once the jobs left open the day before have joined the new day's
+lists, and deletes uploaded rate spreadsheets older than a week at 3:00,
+Malaysia time. The worker takes the live stop counts (queue `live`) before
+the emails and imports (`default`) and checks an empty queue every second,
+so a new count goes out at once even while a batch of emails is waiting.
+Reverb (`php artisan reverb:start`) keeps the WebSocket connections of open
+tracking and order pages, on `127.0.0.1:8080` only:
 
 ```sh
 sudo cp $BACKEND/deploy/systemd/kotak-* /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now kotak-worker kotak-scheduler.timer
-systemctl is-active kotak-worker kotak-scheduler.timer
+sudo systemctl enable --now kotak-worker kotak-scheduler.timer kotak-reverb
+systemctl is-active kotak-worker kotak-scheduler.timer kotak-reverb
+```
+
+Check that nginx hands a WebSocket over to Reverb (expect
+`HTTP/1.1 101 Switching Protocols`):
+
+```sh
+KEY=$(grep '^REVERB_APP_KEY=' $BACKEND/.env | cut -d= -f2-)
+curl -si -N --max-time 3 -H "Host: $DOMAIN" -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+     -H 'Sec-WebSocket-Version: 13' -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+     -H "Origin: http://$DOMAIN" "http://localhost/app/$KEY?protocol=7" | head -n 1
 ```
 
 ## 11. HTTPS on the instance
@@ -370,6 +436,12 @@ After it is created, **Behaviors → Create behavior** for the built assets:
 | Origin                 | the same origin           |
 | Viewer protocol policy | Redirect HTTP to HTTPS    |
 | Cache policy           | `CachingOptimized`        |
+
+Live delivery progress needs nothing more: the default behaviour passes
+WebSocket connections (`/app/...`) on to the origin, as `AllViewer` forwards
+the `Sec-WebSocket-*` headers, and `CachingDisabled` keeps them uncached.
+The browsers' pings every 30 seconds keep a connection from being closed
+for being idle.
 
 `CachingOptimized` passes `Accept-Encoding` to the origin and keeps the
 compressed copy nginx sends. CloudFront only compresses files up to 10 MB
@@ -454,11 +526,14 @@ first, then request SES production access and remove `MAIL_TO_ADDRESS`.
 
 ## After changing `.env`
 
-Re-cache the config and restart the worker:
+Re-cache the config and restart the worker and Reverb:
 
 ```sh
-cd $BACKEND && php artisan optimize && php artisan queue:restart
+cd $BACKEND && php artisan optimize && php artisan queue:restart && php artisan reverb:restart
 ```
+
+A new `REVERB_APP_KEY` also goes into the frontend's `.env` as
+`VITE_REVERB_APP_KEY`, followed by a new build (`deploy/deploy.sh` builds).
 
 ## Updating
 
@@ -501,6 +576,39 @@ through the queue worker that is already running, so there is nothing new to
 install or start either. Check that `MAIL_TO_ADDRESS` is still set while the
 demo accounts are public (step 13), or add `RECEIVER_EMAILS=false`.
 
+The first update with live delivery progress adds `orders.route_position`
+(the order of each driver's stops) and `orders.route_date` (the day of the
+run each stop is on), which `deploy.sh` migrates, numbering the open runs
+as My jobs listed them, by postcode, each on its scheduled day. The
+existing scheduler timer sends the new counts after midnight
+(`deliveries:refresh-progress`, 00:01). It also adds Laravel Reverb, set up
+once with this first update:
+
+1. Give the backend's `.env` Reverb settings with random credentials, in
+   one command (`env.sh` replaces a line that is there and adds one that is
+   not):
+
+   ```sh
+   $BACKEND/deploy/env.sh BROADCAST_CONNECTION=reverb \
+       REVERB_APP_ID=$(php -r 'echo random_int(100000, 999999);') \
+       REVERB_APP_KEY=$(php -r 'echo bin2hex(random_bytes(10));') \
+       REVERB_APP_SECRET=$(php -r 'echo bin2hex(random_bytes(20));') \
+       REVERB_HOST=127.0.0.1 REVERB_PORT=8080 REVERB_SCHEME=http \
+       REVERB_SERVER_HOST=127.0.0.1 REVERB_SERVER_PORT=8080
+   ```
+
+2. Write the frontend's `.env` as in step 6.
+3. Add the `location /app/` block of `deploy/nginx.conf` to
+   `/etc/nginx/conf.d/kotak.conf` (Certbot changed that file, so do not copy
+   the new one over it), then `sudo nginx -t && sudo systemctl reload nginx`.
+4. Run `deploy.sh` as usual.
+5. Install the new and changed services as in step 10 (the worker now takes
+   the `live` queue first), then restart the worker so it uses its new
+   command: `sudo systemctl restart kotak-worker`.
+
+From then on `deploy.sh` restarts Reverb with each deploy
+(`php artisan reverb:restart`).
+
 ## Logs
 
 Look here when the site shows 502, 500 or a blank page:
@@ -510,6 +618,7 @@ sudo tail -n 50 /var/log/nginx/error.log
 sudo tail -n 50 /var/log/php-fpm/www-error.log
 tail -n 50 $BACKEND/storage/logs/laravel-*.log
 sudo journalctl -u kotak-worker -n 50 --no-pager
+sudo journalctl -u kotak-reverb -n 50 --no-pager
 ```
 
 ## Reset the demo data
@@ -525,6 +634,7 @@ composer install --optimize-autoloader --no-interaction
 php artisan optimize:clear
 sudo -u apache bash -c 'umask 0002 && php artisan migrate:fresh --seed --env=staging --force'
 php artisan queue:clear --force
+php artisan queue:clear --queue=live --force
 php artisan optimize
 sudo systemctl start kotak-worker
 ```

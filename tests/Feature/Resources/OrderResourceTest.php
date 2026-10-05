@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Resources;
 
+use App\Enums\OrderStatus;
 use App\Http\Resources\BranchResource;
 use App\Http\Resources\DriverJobResource;
 use App\Http\Resources\OrderResource;
@@ -71,6 +72,15 @@ class OrderResourceTest extends TestCase
 
         $this->assertSame('2026-09-29T02:15:00Z', $data['created_at']);
         $this->assertSame('2026-09-29', $data['scheduled_for']);
+        $this->assertSame('2026-09-29', $data['expected_delivery']);
+
+        // The next day the delivery is still on the van: expected today, not yesterday.
+        $this->travelTo('2026-09-30 02:15:00');
+        $order->forceFill(['status' => OrderStatus::PickedUp])->save();
+        $data = (new OrderSummaryResource($order->fresh()))->response()->getData(true);
+
+        $this->assertSame('2026-09-29', $data['scheduled_for']);
+        $this->assertSame('2026-09-30', $data['expected_delivery']);
     }
 
     public function test_the_payment_receipt_carries_its_order()

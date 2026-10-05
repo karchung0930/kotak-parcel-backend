@@ -84,6 +84,19 @@ EOF
                -e "s|^LOG_STACK=.*|LOG_STACK=daily|" \
                -e "s|^LOG_LEVEL=.*|LOG_LEVEL=warning|" .env
     fi
+    # Reverb gets random credentials of its own. Laravel sends it messages
+    # on 127.0.0.1:8080, where it listens; browsers come in through nginx.
+    if grep -q '^REVERB_APP_KEY=kotak-local-key$' .env; then
+        sed -i -e "s|^BROADCAST_CONNECTION=.*|BROADCAST_CONNECTION=reverb|" \
+               -e "s|^REVERB_APP_ID=.*|REVERB_APP_ID=$(php -r 'echo random_int(100000, 999999);')|" \
+               -e "s|^REVERB_APP_KEY=.*|REVERB_APP_KEY=$(php -r 'echo bin2hex(random_bytes(10));')|" \
+               -e "s|^REVERB_APP_SECRET=.*|REVERB_APP_SECRET=$(php -r 'echo bin2hex(random_bytes(20));')|" \
+               -e "s|^REVERB_HOST=.*|REVERB_HOST=127.0.0.1|" \
+               -e "s|^REVERB_PORT=.*|REVERB_PORT=8080|" \
+               -e "s|^REVERB_SCHEME=.*|REVERB_SCHEME=http|" \
+               -e "s|^REVERB_SERVER_HOST=.*|REVERB_SERVER_HOST=127.0.0.1|" \
+               -e "s|^REVERB_SERVER_PORT=.*|REVERB_SERVER_PORT=8080|" .env
+    fi
     chgrp apache .env && chmod 640 .env
 
     step "MySQL: localhost only, random passwords, database and user"
@@ -119,6 +132,15 @@ SQL
 
     step "Build the frontend"
     cd $FRONTEND
+    # Where browsers reach Reverb: this site's own address, over HTTPS.
+    if ! grep -qs '^VITE_REVERB_APP_KEY=' .env; then
+        {
+            echo "VITE_REVERB_APP_KEY=$(grep '^REVERB_APP_KEY=' $BACKEND/.env | cut -d= -f2-)"
+            echo "VITE_REVERB_HOST=$DOMAIN"
+            echo "VITE_REVERB_PORT=443"
+            echo "VITE_REVERB_SCHEME=https"
+        } >> .env
+    fi
     npm ci --no-audit --no-fund --loglevel=error
     npm run build
     test -f $BACKEND/public/build/manifest.json
@@ -133,8 +155,10 @@ SQL
     if [ "$SEED" = 1 ] && [ "$(php artisan tinker --execute='echo App\Models\Order::count();' 2>/dev/null | tail -1)" = 0 ]; then
         step "Demo data (every password is \"password\")"
         sudo -u apache bash -c 'umask 0002 && php artisan db:seed --env=staging --force'
-        # The worker is not running yet: drop the seeded emails so they are never sent.
+        # The worker is not running yet: drop the seeded emails so they are
+        # never sent, and the live progress messages (queue "live").
         php artisan queue:clear --force
+        php artisan queue:clear --queue=live --force
     fi
     php artisan optimize
 
@@ -146,15 +170,15 @@ SQL
     sudo systemctl enable --now php-fpm nginx
     sudo systemctl restart php-fpm nginx
 
-    step "Queue worker and scheduler"
+    step "Queue worker, scheduler and Reverb"
     sudo cp $BACKEND/deploy/systemd/kotak-* /etc/systemd/system/
     sudo systemctl daemon-reload
-    sudo systemctl enable --now kotak-worker kotak-scheduler.timer
+    sudo systemctl enable --now kotak-worker kotak-scheduler.timer kotak-reverb
 
     step "Check"
     local code
     code=$(curl -s -o /dev/null -w '%{http_code}' -H "Host: $DOMAIN" http://localhost/up)
-    sudo systemctl is-active mysqld php-fpm nginx kotak-worker kotak-scheduler.timer | paste -sd ' '
+    sudo systemctl is-active mysqld php-fpm nginx kotak-worker kotak-scheduler.timer kotak-reverb | paste -sd ' '
     [ "$code" = 200 ] || { echo "http://localhost/up returned $code" >&2; exit 1; }
     echo
     echo "Kotak is running on this instance (http://localhost/up = 200)."

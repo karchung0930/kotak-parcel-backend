@@ -13,6 +13,7 @@ use App\Http\Resources\OrderResource;
 use App\Http\Resources\OrderSummaryResource;
 use App\Models\Branch;
 use App\Models\Order;
+use App\Support\DeliveryProgress;
 use App\Support\PriceCalculator;
 use App\Support\RateCards;
 use Illuminate\Http\RedirectResponse;
@@ -76,9 +77,10 @@ class OrderController extends Controller
     }
 
     /**
-     * Show one of the customer's orders with its tracking history.
+     * Show one of the customer's orders with its tracking history and, while
+     * it is out for delivery, its stop on the driver's run.
      */
-    public function show(Request $request, Order $order): Response
+    public function show(Request $request, Order $order, DeliveryProgress $progress): Response
     {
         Gate::authorize('view', $order);
 
@@ -88,6 +90,11 @@ class OrderController extends Controller
         return Inertia::render('orders/Show', [
             'order' => OrderResource::make($order),
             'canCancel' => $request->user()->can('cancel', $order),
+            // While it is out for delivery: its stop on the driver's run.
+            'progress' => $progress->forOrder($order),
+            // While it is on a driver's run: the private channel its new stop
+            // and status are sent on (routes/channels.php).
+            'liveChannel' => $order->status->isActiveJob() ? DeliveryProgress::privateChannel($order) : null,
         ]);
     }
 

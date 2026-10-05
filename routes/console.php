@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Delivery\RefreshDeliveryProgress;
 use App\Actions\Delivery\SendRunSheets;
 use App\Actions\Orders\ExpireUnclaimedOrders;
 use App\Actions\Orders\SendDropOffReminders;
@@ -28,6 +29,10 @@ Artisan::command('rates:prune-imports', function (PruneRateImportFiles $prune) {
     $this->info("Deleted {$prune->handle()} rate import file(s).");
 })->purpose('Delete uploaded rate spreadsheets older than a week');
 
+Artisan::command('deliveries:refresh-progress', function (RefreshDeliveryProgress $refresh) {
+    $this->info("Refreshed the stops of {$refresh->handle()} delivery run(s).");
+})->purpose("Send parcels out for delivery their stop counts on today's runs");
+
 // Runs at midnight Malaysia time.
 Schedule::command('orders:expire-unclaimed')
     ->daily()
@@ -49,5 +54,12 @@ Schedule::command('drivers:send-run-sheets')
 // Runs at 3am Malaysia time, when nobody is likely to be importing rates.
 Schedule::command('rates:prune-imports')
     ->dailyAt('03:00')
+    ->timezone(config()->string('kotak.timezone'))
+    ->withoutOverlapping();
+
+// Runs a minute after midnight Malaysia time, once the jobs left open
+// yesterday have joined today's lists.
+Schedule::command('deliveries:refresh-progress')
+    ->dailyAt('00:01')
     ->timezone(config()->string('kotak.timezone'))
     ->withoutOverlapping();

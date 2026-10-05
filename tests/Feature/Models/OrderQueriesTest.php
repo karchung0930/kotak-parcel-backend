@@ -90,6 +90,70 @@ class OrderQueriesTest extends TestCase
         $this->assertSame([], Order::jobListFor($driver, CarbonImmutable::parse('2026-10-04', 'UTC'))->pluck('id')->all());
     }
 
+    public function test_todays_job_list_starts_with_the_jobs_not_yet_on_todays_run_then_follows_the_drivers_order()
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00', 'Asia/Kuala_Lumpur'));
+        $driver = User::factory()->driver()->create();
+        $job = fn (string $scheduledFor, int $position, ?string $routeDate = null, string $postcode = '50000', bool $pickedUp = false): Order => ($pickedUp ? Order::factory()->pickedUp($driver) : Order::factory()->assigned($driver))->create([
+            'scheduled_for' => $scheduledFor,
+            'route_position' => $position,
+            'route_date' => $routeDate ?? $scheduledFor,
+            'postcode' => $postcode,
+        ]);
+
+        // Today's run in the driver's order, with a job from Saturday the
+        // driver put second.
+        $third = $job('2026-10-05', 3, pickedUp: true);
+        $first = $job('2026-10-05', 1);
+        $placed = $job('2026-10-03', 2, '2026-10-05', pickedUp: true);
+        // Not yet on today's run: by the run each was last on, then its
+        // place, then its postcode. On Sunday the driver put one of
+        // Saturday's jobs last, so it is still behind Sunday's own stop.
+        $sundayLast = $job('2026-10-03', 5, '2026-10-04');
+        $sunday = $job('2026-10-04', 1, pickedUp: true);
+        $saturdayFar = $job('2026-10-03', 2, postcode: '60000');
+        $saturdayNear = $job('2026-10-03', 2, postcode: '40000', pickedUp: true);
+        $saturday = $job('2026-10-03', 1);
+        $tomorrow = $job('2026-10-06', 1);
+
+        $today = CarbonImmutable::parse('2026-10-05', 'Asia/Kuala_Lumpur');
+        $this->assertSame(
+            [$saturday->id, $saturdayNear->id, $saturdayFar->id, $sunday->id, $sundayLast->id, $first->id, $placed->id, $third->id],
+            Order::jobListFor($driver, $today)->pluck('id')->all(),
+        );
+        // A later day lists its own run.
+        $this->assertSame([$tomorrow->id], Order::jobListFor($driver, $today->addDay())->pluck('id')->all());
+        // An earlier day lists its jobs still open, which are on today's
+        // list now, in the same order.
+        $this->assertSame(
+            [$saturday->id, $saturdayNear->id, $saturdayFar->id, $sundayLast->id, $placed->id],
+            Order::jobListFor($driver, $today->subDays(2))->pluck('id')->all(),
+        );
+    }
+
+    public function test_a_job_carried_over_keeps_its_place_in_the_drivers_order_overnight()
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-04 15:00', 'Asia/Kuala_Lumpur'));
+        $driver = User::factory()->driver()->create();
+        $sunday = CarbonImmutable::parse('2026-10-04', 'Asia/Kuala_Lumpur');
+        // On Sunday the driver left Saturday's parcel until last: a move
+        // places the whole list on Sunday's run (MoveJob).
+        $leftOver = Order::factory()->pickedUp($driver)->create(['scheduled_for' => '2026-10-03', 'route_position' => 3, 'route_date' => '2026-10-04', 'postcode' => '10000']);
+        $first = Order::factory()->pickedUp($driver)->create(['scheduled_for' => '2026-10-04', 'route_position' => 1, 'postcode' => '60000']);
+        $second = Order::factory()->assigned($driver)->create(['scheduled_for' => '2026-10-04', 'route_position' => 2, 'postcode' => '50000']);
+        $this->assertSame([$first->id, $second->id, $leftOver->id], Order::jobListFor($driver, $sunday)->pluck('id')->all());
+
+        // On Monday all three are carried over in the driver's order, still
+        // ahead of Monday's own stop.
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 00:01', 'Asia/Kuala_Lumpur'));
+        $monday = Order::factory()->assigned($driver)->create(['scheduled_for' => '2026-10-05', 'route_position' => 1, 'postcode' => '10000']);
+
+        $this->assertSame(
+            [$first->id, $second->id, $leftOver->id, $monday->id],
+            Order::jobListFor($driver, $sunday->addDay())->pluck('id')->all(),
+        );
+    }
+
     public function test_the_delivery_area_is_one_line_of_plain_text()
     {
         $area = fn (string $city) => (new Order)->forceFill(['city' => $city, 'postcode' => '50450'])->deliveryArea();

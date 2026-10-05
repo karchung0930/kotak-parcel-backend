@@ -83,6 +83,23 @@ class QueryPlanTest extends TestCase
         $this->assertSame(['driver_id', 'attempted_at'], $plan['used_key_parts']);
     }
 
+    public function test_the_locked_reads_of_a_drivers_run_hold_only_their_open_jobs()
+    {
+        $this->travelTo(CarbonImmutable::parse(self::DAY.' 10:00', config('kotak.timezone')));
+        $driver = User::query()->findOrFail($this->driverIds[0]);
+        $day = CarbonImmutable::parse(self::DAY, config('kotak.timezone'));
+
+        // The last place on the run, read when a delivery joins it (AssignDriver).
+        $plan = $this->plan(Order::query()->forDriver($driver)->activeJobs()->routedOn($day)->selectRaw('max(route_position)')->lockForUpdate());
+        $this->assertReadsIndex('orders_driver_id_status_route_date_index', $plan);
+        $this->assertSame(['driver_id', 'status', 'route_date'], $plan['used_key_parts']);
+
+        // The whole list for today, read when a stop moves (MoveJob).
+        $plan = $this->plan(Order::query()->jobListFor($driver, $day)->lockForUpdate());
+        $this->assertReadsIndex('orders_driver_id_status_route_date_index', $plan);
+        $this->assertSame(['driver_id', 'status'], $plan['used_key_parts']);
+    }
+
     /**
      * Assert that the query reads the given index, in the order it needs, so
      * MySQL never sorts the rows itself.
@@ -126,9 +143,9 @@ class QueryPlanTest extends TestCase
 
     /**
      * A month at eight branches with eight drivers: 480 orders, each with a
-     * delivery attempt, so every driver has two jobs a day and each branch
-     * received 45 parcels. Only the indexed columns vary; the plans do not
-     * depend on the rest.
+     * delivery attempt, so every driver has two jobs a day (the last day's
+     * still open) and each branch received 45 parcels. Only the indexed
+     * columns vary; the plans do not depend on the rest.
      */
     private function seedAMonthOfWork(): void
     {
@@ -150,6 +167,11 @@ class QueryPlanTest extends TestCase
                 'branch_id' => $this->branchIds[$i % 8],
                 'driver_id' => $this->driverIds[intdiv($i, 30) % 8],
                 'scheduled_for' => $day->toDateString(),
+                // The last day's jobs are still open, on that day's run; the
+                // others were delivered.
+                'status' => $i % 30 === 0 ? ($i % 60 === 0 ? 'assigned' : 'picked_up') : 'delivered',
+                'route_position' => $i % 30 === 0 ? 1 : null,
+                'route_date' => $i % 30 === 0 ? $day->toDateString() : null,
                 // A quarter were never dropped off.
                 'dropped_off_at' => $i % 4 === 0 ? null : $day->subDay()->addMinutes($i)->utc(),
             ];

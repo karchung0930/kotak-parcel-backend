@@ -5,6 +5,7 @@ namespace Tests\Feature\Public;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\DeliveryProgress;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -148,6 +149,41 @@ class TrackingPageTest extends TestCase
         foreach (['receiver_name', 'receiver_phone', 'sender_name', 'sender_phone', 'address_line1', 'address_line2', 'email', 'price', 'photo'] as $key) {
             $this->assertStringNotContainsString("\"{$key}", $json);
         }
+    }
+
+    public function test_a_parcel_out_for_delivery_shows_its_stop_and_the_channel_of_its_updates()
+    {
+        $driver = User::factory()->driver()->create(['name' => 'Ravi Kumar']);
+        Order::factory()->pickedUp($driver)->create(['route_position' => 1]);
+        Order::factory()->assigned($driver)->create(['route_position' => 2]);
+        $order = Order::factory()->pickedUp($driver)->create(['route_position' => 3, 'tracking_number' => 'KT7Q4M92XD']);
+
+        $response = $this->get(route('track', ['number' => 'KT-7Q4M92XD']))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('result.progress', ['position' => 2, 'stops_before' => 1])
+                ->where('result.live_channel', DeliveryProgress::publicChannel($order)));
+
+        $json = (string) json_encode($response->viewData('page')['props']);
+        $this->assertStringNotContainsString('Ravi Kumar', $json);
+        $this->assertStringNotContainsString('"driver', $json);
+    }
+
+    public function test_the_stop_is_only_shown_while_the_parcel_is_out_for_delivery()
+    {
+        $assigned = Order::factory()->assigned()->create(['route_position' => 1]);
+        $delivered = Order::factory()->delivered()->create();
+
+        // Scheduled: no stop yet, but the page listens for the pick-up.
+        $this->get(route('track', ['number' => $assigned->formatted_tracking_number]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('result.progress', null)
+                ->where('result.live_channel', DeliveryProgress::publicChannel($assigned)));
+
+        $this->get(route('track', ['number' => $delivered->formatted_tracking_number]))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('result.progress', null)
+                ->where('result.live_channel', null));
     }
 
     public function test_tracking_lookups_are_rate_limited_per_visitor()

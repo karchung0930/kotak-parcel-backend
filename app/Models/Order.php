@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\DeliveryOutcome;
 use App\Enums\MalaysianState;
 use App\Enums\OrderStatus;
+use App\Support\DeliveryProgress;
 use App\Support\MailText;
 use App\Support\Settings;
 use App\Support\TrackingNumber;
@@ -55,6 +56,8 @@ use Illuminate\Support\Str;
  * @property int|null $final_rate_card_id
  * @property int|null $driver_id
  * @property CarbonInterface|null $scheduled_for
+ * @property int|null $route_position
+ * @property CarbonInterface|null $route_date
  * @property CarbonInterface|null $drop_off_deadline
  * @property CarbonInterface|null $drop_off_reminded_at
  * @property CarbonInterface|null $dropped_off_at
@@ -104,6 +107,8 @@ class Order extends Model
             'estimated_price_sen' => 'integer',
             'final_price_sen' => 'integer',
             'scheduled_for' => 'date',
+            'route_position' => 'integer',
+            'route_date' => 'date',
             'drop_off_deadline' => 'date',
             'drop_off_reminded_at' => 'datetime',
             'dropped_off_at' => 'datetime',
@@ -320,6 +325,22 @@ class Order extends Model
     }
 
     /**
+     * Get the day the customer can expect the parcel. While it is on a
+     * driver's run, a delivery left over from an earlier day has joined
+     * today's run, so the expected day is never in the past.
+     */
+    public function expectedDelivery(): ?CarbonImmutable
+    {
+        if ($this->scheduled_for === null) {
+            return null;
+        }
+
+        return $this->status->isActiveJob()
+            ? DeliveryProgress::runDay($this->scheduled_for)
+            : CarbonImmutable::parse($this->scheduled_for->toDateString(), config()->string('kotak.timezone'));
+    }
+
+    /**
      * Get the drop-off deadline for an order placed at the given moment: the
      * order day in Malaysia plus the current limit. The nightly job cancels
      * the order once that day has ended.
@@ -330,6 +351,27 @@ class Order extends Model
             ->setTimezone(config()->string('kotak.timezone'))
             ->startOfDay()
             ->addDays(app(Settings::class)->unclaimedOrderDays());
+    }
+
+    /**
+     * Get the place of a delivery added to the driver's run for a day: after
+     * every stop already placed on it (route_date), including the jobs
+     * carried over from earlier days that the driver has put among that
+     * day's stops.
+     *
+     * Call it inside a transaction: the run's stops stay locked until it
+     * commits, so two deliveries added to the same run at the same moment
+     * get a place each, one after the other, and neither can sort before a
+     * stop already on the run.
+     */
+    public static function nextRoutePosition(User $driver, CarbonInterface $date): int
+    {
+        return (int) static::query()
+            ->forDriver($driver)
+            ->activeJobs()
+            ->routedOn($date)
+            ->lockForUpdate()
+            ->max('route_position') + 1;
     }
 
     /**
@@ -407,10 +449,20 @@ class Order extends Model
 
     /**
      * Scope a query to the driver's open deliveries for a Malaysian day, in
-     * the order My jobs lists them. Today's list also carries over the jobs
-     * left open on earlier days, which come first as they are the oldest.
+     * the order My jobs lists them. It is the one order of the stops: the
+     * morning run sheet (App\Notifications\DriverRunSheet) emails it, MoveJob
+     * changes it and App\Support\DeliveryProgress counts stops along it.
      *
-     * The morning run sheet (App\Notifications\DriverRunSheet) emails the same list.
+     * A later day lists its own run in the driver's order. Today's list also
+     * carries over the jobs left open on earlier days. Those not yet placed
+     * on today's run (their route_date is an earlier day) come first, as they
+     * are the oldest, in the order they had: by the run they were last on,
+     * then place. So a job the driver put last yesterday is still behind
+     * yesterday's other stops this morning. Then come the stops of today's
+     * run in the driver's order. A move on today's list places the whole
+     * list on today's run (MoveJob), so from then on a job carried over stays
+     * wherever the driver puts it. An earlier day lists its own jobs still
+     * open, which are on today's list now, in the same order.
      *
      * The day is compared by its date with today in Malaysia, so a day made
      * in another timezone, such as UTC midnight, still counts as today.
@@ -420,14 +472,45 @@ class Order extends Model
     #[Scope]
     protected function jobListFor(Builder $query, User $driver, CarbonInterface $day): void
     {
-        $query->forDriver($driver)
-            ->activeJobs()
-            ->when(
-                $day->toDateString() === today(config()->string('kotak.timezone'))->toDateString(),
-                fn (Builder $jobs) => $jobs->scheduledBefore($day->toImmutable()->addDay()),
-                fn (Builder $jobs) => $jobs->scheduledOn($day),
-            )
-            ->orderBy('scheduled_for')
+        $query->forDriver($driver)->activeJobs();
+
+        $today = today(config()->string('kotak.timezone'))->toImmutable();
+
+        if ($day->toDateString() > $today->toDateString()) {
+            $query->scheduledOn($day)->inRouteOrder();
+
+            return;
+        }
+
+        if ($day->toDateString() === $today->toDateString()) {
+            $query->scheduledBefore($today->addDay());
+        } else {
+            $query->scheduledOn($day);
+        }
+
+        // A range as in routedOn(), so a date stored with a time still matches.
+        $onTodaysRun = 'route_date >= ? and route_date < ?';
+        $todaysRun = [$today->toDateString(), $today->addDay()->toDateString()];
+
+        // Every job has the day of its run since it was assigned (AssignDriver),
+        // so the scheduled day only stands in for a job that never had one.
+        $query->orderByRaw("case when {$onTodaysRun} then 1 else 0 end", $todaysRun)
+            ->orderByRaw("case when {$onTodaysRun} then null else coalesce(route_date, scheduled_for) end", $todaysRun)
+            ->inRouteOrder();
+    }
+
+    /**
+     * Scope a query to the driver's order of the stops. Two stops with the
+     * same place, such as two dispatches at the same moment, follow the
+     * postcode, as My jobs listed them before drivers could change the
+     * order, and then the id.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function inRouteOrder(Builder $query): void
+    {
+        $query->orderBy('route_position')
             ->orderBy('postcode')
             ->orderBy('id');
     }
@@ -456,6 +539,20 @@ class Order extends Model
     protected function scheduledBefore(Builder $query, CarbonInterface $date): void
     {
         $query->where('scheduled_for', '<', $date->toDateString());
+    }
+
+    /**
+     * Scope a query to the stops placed on a run for the given day (route_date).
+     *
+     * A range like scheduledOn(), so a date stored with a time still matches.
+     *
+     * @param  Builder<self>  $query
+     */
+    #[Scope]
+    protected function routedOn(Builder $query, CarbonInterface $date): void
+    {
+        $query->where('route_date', '>=', $date->toDateString())
+            ->where('route_date', '<', $date->toImmutable()->addDay()->toDateString());
     }
 
     /**

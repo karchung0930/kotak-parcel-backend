@@ -36,6 +36,8 @@ class OrderSummaryResource extends JsonResource
             'estimated_price_sen' => $this->estimated_price_sen,
             'final_price_sen' => $this->final_price_sen,
             'scheduled_for' => $this->scheduled_for?->toDateString(),
+            // The day the customer can expect it: today, not a past day, for a delivery carried over.
+            'expected_delivery' => $this->expectedDelivery()?->toDateString(),
             // The last day to drop the parcel off (Malaysia), while it is waiting for drop-off.
             'drop_off_deadline' => $this->dropOffDeadline()?->toDateString(),
             'created_at' => $this->created_at?->toIso8601ZuluString(),

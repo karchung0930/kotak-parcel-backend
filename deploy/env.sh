@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Set values in the backend .env, then re-cache the config and restart the worker.
+# Set values in the backend .env, then re-cache the config and restart the
+# queue worker and Reverb.
 # No editor needed:
 #
 #   deploy/env.sh APP_URL=https://kotak.example.com SESSION_SECURE_COOKIE=true TRUSTED_PROXIES='*'
@@ -26,10 +27,18 @@ main() {
         echo "set $key"
     done
 
+    # Never re-cache a config that runs Reverb, reachable from the internet,
+    # on the example credentials from .env.example, which anyone can read.
+    if grep -qE '^REVERB_APP_(KEY|SECRET)=kotak-local-' "$env"; then
+        echo "Saved, but not applied: give Reverb its own credentials first (docs/deploy-aws-ec2.md, step 4)." >&2
+        exit 1
+    fi
+
     cd "$(dirname "$env")"
     php artisan optimize --quiet
     php artisan queue:restart --quiet
-    echo "Config re-cached, worker restarted."
+    php artisan reverb:restart --quiet
+    echo "Config re-cached, worker and Reverb restarted."
 }
 
 main "$@"

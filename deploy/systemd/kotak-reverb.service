@@ -1,0 +1,26 @@
+# /etc/systemd/system/kotak-reverb.service
+# Laravel Reverb, the WebSocket server behind live delivery progress. It
+# listens on 127.0.0.1:8080 only, set here so it never depends on .env;
+# nginx passes the browsers' /app connections on to it, behind the site's
+# TLS (deploy/nginx.conf). See docs/deploy-aws-ec2.md.
+# "php artisan reverb:restart" (deploy.sh) makes it finish its work and exit,
+# so it needs Restart=always to start again with the new code.
+[Unit]
+Description=Kotak Reverb (WebSockets)
+After=network-online.target mysqld.service
+Wants=network-online.target
+
+[Service]
+User=apache
+Group=apache
+UMask=0002
+WorkingDirectory=/var/www/kotak/kotak-parcel-backend
+ExecStart=/usr/bin/php artisan reverb:start --host=127.0.0.1 --port=8080 --no-interaction
+Restart=always
+RestartSec=5
+# Every open page is an open connection, and so a file descriptor. Reverb
+# takes up to REVERB_APP_MAX_CONNECTIONS (5000 by default) of them.
+LimitNOFILE=10000
+
+[Install]
+WantedBy=multi-user.target

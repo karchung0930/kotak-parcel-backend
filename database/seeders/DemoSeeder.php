@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Actions\Delivery\AssignDriver;
 use App\Actions\Delivery\MarkPickedUp;
+use App\Actions\Delivery\MoveJob;
 use App\Actions\Delivery\RecordDeliveryFailure;
 use App\Actions\Delivery\RecordDeliverySuccess;
 use App\Actions\Delivery\ReturnToSender;
@@ -17,6 +18,7 @@ use App\Actions\RateCards\PublishRateCard;
 use App\Actions\RateCards\UpdateRateCardDraft;
 use App\Enums\DeliveryFailureReason;
 use App\Enums\MalaysianState;
+use App\Enums\MoveDirection;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
 use App\Models\Branch;
@@ -73,6 +75,7 @@ class DemoSeeder extends Seeder
         private CancelOrder $cancelOrder,
         private AssignDriver $assignDriver,
         private MarkPickedUp $markPickedUp,
+        private MoveJob $moveJob,
         private RecordDeliverySuccess $recordDeliverySuccess,
         private RecordDeliveryFailure $recordDeliveryFailure,
         private ReturnToSender $returnToSender,
@@ -93,6 +96,10 @@ class DemoSeeder extends Seeder
         }
 
         $this->now = CarbonImmutable::now();
+
+        // Demo data is history, not news: nothing is broadcast while it is
+        // written, so seeding never waits on a Reverb server that is not running.
+        config(['broadcasting.default' => 'null']);
 
         Storage::disk('local')->deleteDirectory('pod');
 
@@ -379,11 +386,28 @@ class DemoSeeder extends Seeder
         }
 
         if (in_array($target, [OrderStatus::Assigned, OrderStatus::PickedUp], true)) {
-            $this->dispatchTo($order, $driver, 0);
+            // Due today, or left over from an earlier day and carried over to today's list.
+            $this->dispatchTo($order, $driver, $scenario['scheduled_days_ago'] ?? 0);
 
             if ($target === OrderStatus::PickedUp) {
                 $this->travelTo(0, '09:15');
                 $this->markPickedUp->handle($order, $driver);
+            }
+
+            if ($scenario['first_stop'] ?? false) {
+                // The driver moves it up today's list on My jobs, one place at a
+                // time, until it is the first parcel on the van, by its place in
+                // the list (an earlier stop may have left the run, so its number
+                // can be higher).
+                $this->travelTo(0, '09:20');
+                $order->refresh();
+                $list = Order::query()->jobListFor($driver, $this->at(0, '09:20'))->get();
+                $place = (int) $list->search(fn (Order $stop): bool => $stop->is($order));
+                $firstOnTheVan = (int) $list->search(fn (Order $stop): bool => $stop->status === OrderStatus::PickedUp);
+
+                for (; $place > $firstOnTheVan; $place--) {
+                    $this->moveJob->handle($order, $driver, MoveDirection::Up);
+                }
             }
 
             return;
@@ -539,14 +563,16 @@ class DemoSeeder extends Seeder
                 'payment' => PaymentMethod::Card,
                 'order' => $this->parcel('Aaron Wong', '+60165678914', '6, Jalan Galing', null, 'Kuantan', MalaysianState::Pahang, '25200', 'Camera tripod', 2600, 65, 15, 15),
             ],
+            // Due yesterday and still to collect: carried over to the top of Ravi's list, marked Overdue.
             [
                 'customer' => 'priya', 'branch' => 'SJ-SS15', 'status' => OrderStatus::Assigned, 'days_ago' => 3,
-                'driver' => 'ravi', 'payment' => PaymentMethod::Cash,
+                'driver' => 'ravi', 'payment' => PaymentMethod::Cash, 'scheduled_days_ago' => 1,
                 'order' => $this->parcel('Nadia Karim', '+60176789015', '8, Jalan P9E/2', 'Presint 9', 'Putrajaya', MalaysianState::Putrajaya, '62250', 'Tea set', 2200, 35, 30, 25),
             ],
+            // Ravi delivers this one first, so the sample parcel is his second stop.
             [
-                'customer' => 'priya', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Assigned, 'days_ago' => 2,
-                'driver' => 'ravi', 'payment' => PaymentMethod::Card,
+                'customer' => 'priya', 'branch' => 'PJ-SS2', 'status' => OrderStatus::PickedUp, 'days_ago' => 2,
+                'driver' => 'ravi', 'payment' => PaymentMethod::Card, 'first_stop' => true,
                 'order' => $this->parcel('Vincent Yeoh', '+60137890116', '2, Jalan 17/1', 'Seksyen 17', 'Petaling Jaya', MalaysianState::Selangor, '46400', 'Coffee grinder', 2400, 30, 20, 35),
             ],
             [

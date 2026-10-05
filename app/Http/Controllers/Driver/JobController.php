@@ -3,19 +3,23 @@
 namespace App\Http\Controllers\Driver;
 
 use App\Actions\Delivery\MarkPickedUp;
+use App\Actions\Delivery\MoveJob;
 use App\Actions\Delivery\RecordDeliveryFailure;
 use App\Actions\Delivery\RecordDeliverySuccess;
 use App\Enums\DeliveryFailureReason;
 use App\Enums\DeliveryOutcome;
+use App\Enums\MoveDirection;
 use App\Enums\OrderStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Driver\DeliverJobRequest;
 use App\Http\Requests\Driver\FailJobRequest;
 use App\Http\Requests\Driver\ListJobsRequest;
+use App\Http\Requests\Driver\MoveJobRequest;
 use App\Http\Resources\DriverJobResource;
 use App\Models\DeliveryAttempt;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\DeliveryProgress;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,9 +33,14 @@ class JobController extends Controller
      * Show the driver's open deliveries for a day (today in Malaysia by default).
      *
      * Today's list also carries over jobs left open from earlier days, flagged
-     * as overdue and listed first, so unfinished work never drops out of view.
+     * as overdue, so unfinished work never drops out of view. They come first
+     * until the driver moves them among today's stops (Order::jobListFor()).
+     *
+     * Each parcel on the van comes with its stop, worked out as its
+     * customer's is (DeliveryProgress), so both screens give the same number
+     * on any day: a job still open from an earlier day is on today's run.
      */
-    public function index(ListJobsRequest $request): Response
+    public function index(ListJobsRequest $request, DeliveryProgress $progress): Response
     {
         $driver = $request->user();
         $day = $request->day();
@@ -42,9 +51,17 @@ class JobController extends Controller
             ->withCount('failedAttempts')
             ->get();
 
+        $stops = $progress->forRun($driver, DeliveryProgress::runDay($day));
+
         return Inertia::render('driver/Jobs', [
             'date' => $day->toDateString(),
+            // The day the page compares the day shown with, from the server,
+            // so a page left open past midnight moves on with it.
+            'today' => today(config()->string('kotak.timezone'))->toDateString(),
             'jobs' => DriverJobResource::collection($jobs),
+            // The stop of each job, in the list's order: its place among the
+            // parcels on the van, or null while it is still to collect.
+            'stops' => $jobs->map(fn (Order $job): ?int => $stops[$job->id]['position'] ?? null)->values(),
             'counts' => [
                 'assigned' => $jobs->where('status', OrderStatus::Assigned)->count(),
                 'picked_up' => $jobs->where('status', OrderStatus::PickedUp)->count(),
@@ -79,6 +96,17 @@ class JobController extends Controller
         $order = $markPickedUp->handle($order, $request->user());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => "Picked up {$order->formatted_tracking_number}."]);
+
+        return back();
+    }
+
+    /**
+     * Move a stop one place up or down the driver's list for today, the jobs
+     * carried over from earlier days included.
+     */
+    public function move(MoveJobRequest $request, Order $order, MoveJob $moveJob): RedirectResponse
+    {
+        $moveJob->handle($order, $request->user(), $request->enum('direction', MoveDirection::class));
 
         return back();
     }

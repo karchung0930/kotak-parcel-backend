@@ -47,7 +47,11 @@ class RecordDeliveryFailure
                 'attempted_at' => now(),
             ]);
 
-            return $this->statuses->transition($order, OrderStatus::DeliveryFailed, $driver, $reason->label());
+            // The stop leaves the driver's run; a reschedule puts it on a new one.
+            return $this->statuses->transition($order, OrderStatus::DeliveryFailed, $driver, $reason->label(), [
+                'route_position' => null,
+                'route_date' => null,
+            ]);
         });
     }
 }

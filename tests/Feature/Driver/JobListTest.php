@@ -5,6 +5,7 @@ namespace Tests\Feature\Driver;
 use App\Models\DeliveryAttempt;
 use App\Models\Order;
 use App\Models\User;
+use App\Support\DeliveryProgress;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Notification;
@@ -40,7 +41,7 @@ class JobListTest extends TestCase
                 ->component('driver/Jobs')
                 ->where('date', '2026-09-29')
                 ->has('jobs', 2)
-                // Sorted by postcode so nearby stops are listed together.
+                // In the same place on the run (none set here), stops follow the postcode.
                 ->where('jobs.0.id', $pickedUp->id)
                 ->where('jobs.0.status.value', 'picked_up')
                 ->where('jobs.0.failed_attempts', 0)
@@ -63,6 +64,7 @@ class JobListTest extends TestCase
             ->get(route('driver.jobs'))
             ->assertInertia(fn (Assert $page) => $page
                 ->where('date', '2026-09-30')
+                ->where('today', '2026-09-30')
                 ->has('jobs', 1)
                 ->where('jobs.0.id', $job->id)
                 ->where('jobs.0.is_overdue', false),
@@ -110,6 +112,50 @@ class JobListTest extends TestCase
                 ->has('jobs', 1)
                 ->where('jobs.0.id', $job->id),
             );
+    }
+
+    public function test_each_parcel_on_the_van_has_the_stop_its_customer_is_told_whatever_the_day_shown()
+    {
+        $this->travelTo(CarbonImmutable::parse('2026-10-05 10:00', 'Asia/Kuala_Lumpur'));
+        $driver = User::factory()->driver()->create();
+        // Two jobs left over from Saturday: one still to collect, and one on
+        // the van the driver put last on today's run.
+        $toCollect = Order::factory()->assigned($driver)->create(['scheduled_for' => '2026-10-03', 'route_position' => 1]);
+        $leftOver = Order::factory()->pickedUp($driver)->create(['scheduled_for' => '2026-10-03', 'route_position' => 3, 'route_date' => '2026-10-05']);
+        $first = Order::factory()->pickedUp($driver)->create(['scheduled_for' => '2026-10-05', 'route_position' => 1]);
+        $second = Order::factory()->pickedUp($driver)->create(['scheduled_for' => '2026-10-05', 'route_position' => 2]);
+        $tomorrow = Order::factory()->pickedUp($driver)->create(['scheduled_for' => '2026-10-06', 'route_position' => 1]);
+        $progress = app(DeliveryProgress::class);
+
+        $this->actingAs($driver)
+            ->get(route('driver.jobs'))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('date', '2026-10-05')
+                ->where('today', '2026-10-05')
+                ->where('jobs', fn ($jobs) => collect($jobs)->pluck('id')->all() === [$toCollect->id, $first->id, $second->id, $leftOver->id])
+                ->where('stops', [null, 1, 2, 3]),
+            );
+        $this->assertSame(['position' => 3, 'stops_before' => 2], $progress->forOrder($leftOver));
+
+        // Saturday lists what is left of it in today's order, with today's
+        // stops, as its customers are told.
+        $this->actingAs($driver)
+            ->get(route('driver.jobs', ['date' => '2026-10-03']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('date', '2026-10-03')
+                ->where('today', '2026-10-05')
+                ->where('jobs', fn ($jobs) => collect($jobs)->pluck('id')->all() === [$toCollect->id, $leftOver->id])
+                ->where('stops', [null, 3]),
+            );
+
+        // Tomorrow has a run of its own.
+        $this->actingAs($driver)
+            ->get(route('driver.jobs', ['date' => '2026-10-06']))
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('jobs.0.id', $tomorrow->id)
+                ->where('stops', [1]),
+            );
+        $this->assertSame(['position' => 1, 'stops_before' => 0], $progress->forOrder($tomorrow));
     }
 
     public function test_the_list_carries_what_the_delivery_needs_and_nothing_about_the_sender()

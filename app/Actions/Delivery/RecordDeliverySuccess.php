@@ -58,7 +58,11 @@ class RecordDeliverySuccess
                     'attempted_at' => now(),
                 ]);
 
-                return $this->statuses->transition($order, OrderStatus::Delivered, $driver);
+                // The stop leaves the driver's run.
+                return $this->statuses->transition($order, OrderStatus::Delivered, $driver, null, [
+                    'route_position' => null,
+                    'route_date' => null,
+                ]);
             });
         } catch (Throwable $e) {
             // Nothing was recorded, so do not keep an orphaned photo.

@@ -8,6 +8,7 @@ Route::middleware(['auth', 'role:driver'])->prefix('driver')->name('driver.')->g
     Route::get('jobs', [JobController::class, 'index'])->name('jobs');
     Route::get('jobs/{order}', [JobController::class, 'show'])->name('jobs.show');
     Route::post('jobs/{order}/pickup', [JobController::class, 'pickup'])->name('jobs.pickup');
+    Route::post('jobs/{order}/move', [JobController::class, 'move'])->middleware('throttle:driver-moves')->name('jobs.move');
     Route::post('jobs/{order}/deliver', [JobController::class, 'deliver'])->name('jobs.deliver');
     Route::post('jobs/{order}/fail', [JobController::class, 'fail'])->name('jobs.fail');
 });

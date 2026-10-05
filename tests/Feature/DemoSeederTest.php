@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\RateCard;
 use App\Models\User;
 use App\Rules\MalaysianPhone;
+use App\Support\DeliveryProgress;
 use App\Support\RateCards;
 use Database\Seeders\DemoSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -44,6 +45,19 @@ class DemoSeederTest extends TestCase
         $this->assertSame('60000', $sample->postcode);
         $this->assertSame(6000, $sample->chargeable_weight_g);
         $this->assertSame(1800, $sample->final_price_sen);
+
+        // Ravi takes the Petaling Jaya parcel first, so the sample is his second
+        // stop. Yesterday's Putrajaya job, still to collect, is carried over
+        // at the top of his list.
+        $ravi = User::query()->where('email', 'driver.ravi@kotak.test')->firstOrFail();
+        $run = Order::query()->jobListFor($ravi, today('Asia/Kuala_Lumpur'))->get();
+        $this->assertSame(['KT00000017', 'KT00000018', 'KT7Q4M92XD'], $run->pluck('tracking_number')->all());
+        $this->assertSame([true, false, false], $run->map(fn (Order $order) => $order->isOverdue())->all());
+        $this->assertSame(today('Asia/Kuala_Lumpur')->subDay()->toDateString(), $run->first()?->scheduled_for?->toDateString());
+        $this->assertSame(OrderStatus::Assigned, $run->first()?->status);
+        $this->assertSame([1, 2, 3], $run->pluck('route_position')->all());
+        $this->assertSame([today('Asia/Kuala_Lumpur')->toDateString()], $run->map(fn (Order $order) => $order->route_date?->toDateString())->unique()->values()->all());
+        $this->assertSame(['position' => 2, 'stops_before' => 1], app(DeliveryProgress::class)->forOrder($sample));
 
         // Some receivers have an email, all at reserved .test addresses that are never sent to.
         $this->assertSame('daniel.lim@kotak.test', $sample->receiver_email);

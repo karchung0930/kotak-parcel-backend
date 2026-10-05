@@ -23,11 +23,12 @@ composer setup                           # composer install, app key, migrations
 php artisan db:seed --class=DemoSeeder   # the demo accounts and orders listed in the README
 
 cd ../kotak-parcel-frontend
+cp .env.example .env                     # where the backend is, and where the pages reach Reverb
 npm ci                                   # the exact versions in package-lock.json
 npm run build                            # while editing the pages, run npm run dev in a second terminal instead
 
 cd ../kotak-parcel-backend
-composer run dev                         # http://localhost:8000 and a queue listener
+composer run dev                         # http://localhost:8000, a queue listener and Reverb
 ```
 
 - **Database.** [`compose.yaml`](../compose.yaml) runs one MySQL 8.4
@@ -44,6 +45,22 @@ composer run dev                         # http://localhost:8000 and a queue lis
   `composer run dev` fetches its process runner through npx (`concurrently`
   on Windows, `@laravel/multiplex` on macOS and Linux), so it needs network
   access, and npx may ask you to confirm.
+- **Live delivery progress (Reverb).** `composer run dev` also starts
+  Laravel Reverb (`php artisan reverb:start`) on `127.0.0.1:8080`, and the
+  queue listener, which takes the `live` queue before `default` as the
+  server's worker does, sends it each change to a driver's stops. The
+  `BROADCAST_CONNECTION` and `REVERB_*` lines of `.env.example` set it up,
+  and the frontend's `.env` holds the same key, host, port and scheme as
+  `VITE_REVERB_*`, which the build puts in the pages (build again after
+  changing them). A `.env` made before Reverb needs those lines copied in.
+  To see it work, open
+  <http://localhost:8000/track?number=KT-7Q4M92XD> in one browser, sign in
+  as Ravi in another, and move the parcel on **My jobs** (**Reorder stops**):
+  the tracking page changes without reloading. Pages connect from the host
+  of `APP_URL` (`localhost`); for `127.0.0.1` too, set
+  `REVERB_ALLOWED_ORIGINS=localhost,127.0.0.1`. Without Reverb the pages
+  show the stops as they were when opened, and
+  `BROADCAST_CONNECTION=log` writes the messages to the log instead.
 - **Email.** Locally, emails are written to `storage/logs/laravel.log`
   (`MAIL_MAILER=log`). Follow it with `tail -f storage/logs/laravel.log`
   (`Get-Content storage/logs/laravel.log -Wait` in PowerShell). Where PHP
@@ -54,12 +71,14 @@ composer run dev                         # http://localhost:8000 and a queue lis
   `MAIL_TO_ADDRESS=you@example.com` in `.env`: every email then goes to that
   address and appears in the log. Or register your own account.
 - **Scheduler.** It is only needed for the 7:00 driver run sheets, the 9:00
-  drop-off reminders, the nightly clean-up of unclaimed orders and the
-  deletion of uploaded rate spreadsheets after a week. Run
-  `php artisan schedule:work` in another terminal, or call the jobs directly
-  with `php artisan drivers:send-run-sheets`,
-  `php artisan orders:remind-unclaimed`, `php artisan orders:expire-unclaimed`
-  and `php artisan rates:prune-imports`.
+  drop-off reminders, the nightly clean-up of unclaimed orders, the stop
+  counts sent just after midnight and the deletion of uploaded rate
+  spreadsheets after a week. Run `php artisan schedule:work` in another
+  terminal, or call the jobs directly with
+  `php artisan drivers:send-run-sheets`, `php artisan orders:remind-unclaimed`,
+  `php artisan orders:expire-unclaimed`,
+  `php artisan deliveries:refresh-progress` and
+  `php artisan rates:prune-imports`.
 - **Wayfinder.** The Vite plugin regenerates the route helpers. If they are
   missing, run `npm run build` in the frontend, or from the frontend folder:
   `php ../kotak-parcel-backend/artisan wayfinder:generate --with-form --path=resources/js`.
@@ -161,6 +180,22 @@ The PHP tests cover:
   card, formula escaping, the jobs' steps and the daily file clean-up
 - payments
 - proof-of-delivery privacy
+- live delivery progress: the stops before a parcel (the driver's order,
+  ties, parcels delivered or not delivered leaving the count, carried-over
+  jobs before and among today's stops, other days and drivers, new
+  assignments joining the end of their day's run, reassignments), moving
+  stops, carried-over ones included, and the counts of the customers behind
+  an overdue parcel left until last, who may move and how often, the
+  messages and their channels (no personal data, a name that cannot be
+  guessed, only parcels whose numbers changed, on the `live` queue), the
+  counts sent after midnight and the driver's order kept overnight, My
+  jobs giving each parcel the stop its customer is told on any day, a move
+  never touching another driver's list, the private channel's owner check,
+  that a Reverb outage never fails a delivery and that numbers Reverb did
+  not take are sent again, a run held by another change being retried from
+  the queue, the Reverb config's defaults (local only, a connection cap and
+  a message limit), and the `route_position` and `route_date` migrations
+  both ways
 - the queued notifications, including which driver gets which email when a
   delivery is assigned, moved or handed over, the morning run sheets, which
   steps reach the receiver and which queued ones are dropped as old news,
@@ -168,8 +203,8 @@ The PHP tests cover:
   details it should not
 - the site settings, the drop-off timing figures and the reminder job
 - rate limits and security headers
-- the indexes behind the busiest pages (MySQL's `EXPLAIN` on a month of
-  orders)
+- the indexes behind the busiest pages and the locking reads of a
+  driver's run (MySQL's `EXPLAIN` on a month of orders)
 - the demo seeder
 
 The feature tests assert the Inertia page and props each screen receives,

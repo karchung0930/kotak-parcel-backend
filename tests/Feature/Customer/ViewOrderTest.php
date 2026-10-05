@@ -125,6 +125,39 @@ class ViewOrderTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('order.drop_off_deadline', null));
     }
 
+    public function test_customers_see_the_stop_of_their_parcel_out_for_delivery_without_the_driver()
+    {
+        $driver = User::factory()->driver()->create();
+        Order::factory()->pickedUp($driver)->create(['route_position' => 1]);
+        $order = Order::factory()->pickedUp($driver)->create(['route_position' => 2]);
+
+        $this->actingAs($order->customer)
+            ->get(route('orders.show', $order))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('progress', ['position' => 2, 'stops_before' => 1])
+                ->where('liveChannel', "orders.{$order->id}")
+                ->missing('order.driver'));
+    }
+
+    public function test_there_is_no_stop_before_the_driver_has_the_parcel_and_no_channel_after_the_delivery()
+    {
+        $assigned = Order::factory()->assigned()->create();
+        $paid = Order::factory()->paid()->create();
+        $delivered = Order::factory()->delivered()->create();
+
+        // Scheduled: no stop yet, but the page listens for the pick-up.
+        $this->actingAs($assigned->customer)
+            ->get(route('orders.show', $assigned))
+            ->assertInertia(fn (Assert $page) => $page->where('progress', null)->where('liveChannel', "orders.{$assigned->id}"));
+
+        foreach ([$paid, $delivered] as $order) {
+            $this->actingAs($order->customer)
+                ->get(route('orders.show', $order))
+                ->assertInertia(fn (Assert $page) => $page->where('progress', null)->where('liveChannel', null));
+        }
+    }
+
     public function test_orders_cannot_be_cancelled_once_dropped_off()
     {
         $order = Order::factory()->droppedOff()->create();
