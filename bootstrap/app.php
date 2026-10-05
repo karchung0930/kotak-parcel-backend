@@ -24,6 +24,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->append(SecurityHeaders::class);
 
+        // Mail apps' one-click unsubscribe posts without a session; the
+        // signed link is the permission (see routes/web.php).
+        $middleware->validateCsrfTokens(except: ['deliveries/*/emails']);
+
         $middleware->web(append: [
             EnsureUserIsActive::class,
             HandleInertiaRequests::class,

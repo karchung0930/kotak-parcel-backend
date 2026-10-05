@@ -8,6 +8,7 @@ use App\Actions\Orders\RecordDropOff;
 use App\Actions\Payments\RecordPayment;
 use App\Enums\OrderStatus;
 use App\Enums\PaymentMethod;
+use App\Events\OrderStatusChanged;
 use App\Listeners\SendOrderStatusNotification;
 use App\Models\Branch;
 use App\Models\Order;
@@ -19,6 +20,7 @@ use Illuminate\Events\CallQueuedListener;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Mail\Transport\ArrayTransport;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -152,6 +154,24 @@ class OrderStatusNotificationTest extends TestCase
         $this->assertStringStartsWith('Reassigned to another driver', (string) $order->latestStatusEvent()->firstOrFail()->note);
         Notification::assertNotSentTo($order->customer, OrderStatusUpdated::class);
         Notification::assertSentTimes(OrderStatusUpdated::class, 0);
+    }
+
+    public function test_a_queued_copy_of_the_event_still_knows_a_new_day_from_a_driver_swap()
+    {
+        Event::fake([OrderStatusChanged::class]);
+        $today = today(config()->string('kotak.timezone'));
+        $admin = User::factory()->admin()->create();
+        $order = Order::factory()->assigned()->create(['scheduled_for' => $today->toDateString()]);
+
+        $order = app(AssignDriver::class)->handle($order, $admin, User::factory()->driver()->create(), $today->addDay());
+        app(AssignDriver::class)->handle($order, $admin, User::factory()->driver()->create(), $today->addDay());
+
+        // A queued listener gets the event back with the order fresh from the
+        // database, which no longer knows what its last save changed.
+        $events = Event::dispatched(OrderStatusChanged::class)->map(fn (array $dispatched) => unserialize(serialize($dispatched[0])));
+
+        $this->assertSame([false, true], $events->map(fn (OrderStatusChanged $event) => $event->isDriverSwap())->all());
+        $this->assertFalse($events[0]->order->wasChanged('scheduled_for'));
     }
 
     public function test_the_email_names_the_status_explains_it_and_links_to_public_tracking()

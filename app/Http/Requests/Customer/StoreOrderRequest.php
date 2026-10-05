@@ -44,6 +44,11 @@ class StoreOrderRequest extends FormRequest
             'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')->where('is_active', true)],
             'receiver_name' => ['required', 'string', 'max:100'],
             'receiver_phone' => ['required', 'string', MalaysianPhone::mobileOrLandline()],
+            // Optional: the receiver is then emailed about the delivery. Nobody
+            // confirms this address, so only plain ones that a mail server can
+            // deliver to: no comments, quoted names, IP addresses, dotless
+            // domains ("daniel@gmail") or non-ASCII characters.
+            'receiver_email' => ['nullable', 'string', 'email:strict,filter', 'max:255'],
             'address_line1' => ['required', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],
             // Shown to drivers in their emails: one line, nothing that could act as markup.
@@ -68,6 +73,7 @@ class StoreOrderRequest extends FormRequest
         return [
             'branch_id' => 'drop-off branch',
             'receiver_phone' => 'receiver\'s phone number',
+            'receiver_email' => 'receiver\'s email',
             'address_line1' => 'address',
             'address_line2' => 'address line 2',
             'declared_weight_g' => 'weight',
@@ -88,6 +94,7 @@ class StoreOrderRequest extends FormRequest
 
         return [
             'branch_id.exists' => 'Choose a branch that is open for drop-off.',
+            'receiver_email.email' => 'Enter a valid email address, or leave it empty.',
             // No-break spaces keep the characters together in the narrow city column.
             'city.not_regex' => "Remove the characters <\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the city.",
             'postcode.regex' => 'Enter a 5-digit postcode.',

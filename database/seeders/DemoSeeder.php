@@ -466,26 +466,26 @@ class DemoSeeder extends Seeder
             [
                 'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::PickedUp, 'days_ago' => 2,
                 'driver' => 'ravi', 'payment' => PaymentMethod::Card, 'tracking_number' => 'KT7Q4M92XD',
-                'order' => $this->parcel('Daniel Lim', '+60127788990', 'No. 12, Jalan Datuk Sulaiman 1', 'Taman Tun Dr Ismail', 'Kuala Lumpur', MalaysianState::KualaLumpur, '60000', 'Ceramic dinner set', 4200, 40, 30, 25),
+                'order' => $this->parcel('Daniel Lim', '+60127788990', 'No. 12, Jalan Datuk Sulaiman 1', 'Taman Tun Dr Ismail', 'Kuala Lumpur', MalaysianState::KualaLumpur, '60000', 'Ceramic dinner set', 4200, 40, 30, 25, receiverEmail: 'daniel.lim@kotak.test'),
             ],
             [
                 'customer' => 'aisyah', 'branch' => 'KL-MVC', 'status' => OrderStatus::Created, 'days_ago' => 0,
-                'order' => $this->parcel('Nur Izzati Hassan', '+60172345601', 'Unit 18-3, Residensi Sentral', 'Jalan Tun Sambanthan', 'Kuala Lumpur', MalaysianState::KualaLumpur, '50470', 'Batik scarves', 600, 30, 20, 5),
+                'order' => $this->parcel('Nur Izzati Hassan', '+60172345601', 'Unit 18-3, Residensi Sentral', 'Jalan Tun Sambanthan', 'Kuala Lumpur', MalaysianState::KualaLumpur, '50470', 'Batik scarves', 600, 30, 20, 5, receiverEmail: 'izzati.hassan@kotak.test'),
             ],
             [
                 'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Delivered, 'days_ago' => 6, 'ordered_days_before' => 2,
                 'driver' => 'faizal', 'payment' => PaymentMethod::Cash,
-                'order' => $this->parcel('Chong Wei Liang', '+60163456702', '8, Lorong Maarof', 'Bangsar Park', 'Kuala Lumpur', MalaysianState::KualaLumpur, '59000', 'Mechanical keyboard', 1500, 45, 16, 6),
+                'order' => $this->parcel('Chong Wei Liang', '+60163456702', '8, Lorong Maarof', 'Bangsar Park', 'Kuala Lumpur', MalaysianState::KualaLumpur, '59000', 'Mechanical keyboard', 1500, 45, 16, 6, receiverEmail: 'weiliang.chong@kotak.test'),
             ],
             [
                 'customer' => 'aisyah', 'branch' => 'PJ-SS2', 'status' => OrderStatus::Paid, 'days_ago' => 1, 'ordered_days_before' => 1,
                 'payment' => PaymentMethod::Card,
-                'order' => $this->parcel('Rosli Ismail', '+60134567803', 'No. 5, Jalan Meru', 'Taman Meru', 'Klang', MalaysianState::Selangor, '41050', 'Rice cooker', 2800, 35, 35, 30),
+                'order' => $this->parcel('Rosli Ismail', '+60134567803', 'No. 5, Jalan Meru', 'Taman Meru', 'Klang', MalaysianState::Selangor, '41050', 'Rice cooker', 2800, 35, 35, 30, receiverEmail: 'rosli.ismail@kotak.test'),
             ],
             [
                 'customer' => 'aisyah', 'branch' => 'KL-BSR', 'status' => OrderStatus::DeliveryFailed, 'days_ago' => 4, 'ordered_days_before' => 3,
                 'driver' => 'wong', 'failures' => [DeliveryFailureReason::RecipientUnavailable],
-                'order' => $this->parcel('Faris Hakimi', '+60195678904', '22, Jalan Kenari 5', 'Bandar Puchong Jaya', 'Puchong', MalaysianState::Selangor, '47100', 'Office chair cushion', 1900, 45, 45, 12),
+                'order' => $this->parcel('Faris Hakimi', '+60195678904', '22, Jalan Kenari 5', 'Bandar Puchong Jaya', 'Puchong', MalaysianState::Selangor, '47100', 'Office chair cushion', 1900, 45, 45, 12, receiverEmail: 'faris.hakimi@kotak.test'),
             ],
             [
                 'customer' => 'aisyah', 'branch' => 'SJ-SS15', 'status' => OrderStatus::Cancelled, 'days_ago' => 3,
@@ -508,7 +508,7 @@ class DemoSeeder extends Seeder
             [
                 'customer' => 'jason', 'branch' => 'KL-MVC', 'status' => OrderStatus::Assigned, 'days_ago' => 2,
                 'driver' => 'siti', 'payment' => PaymentMethod::Card,
-                'order' => $this->parcel('Sarah Abdullah', '+60179012308', 'C-12-5, Pangsapuri Seri Mas', 'Jalan Awan Hijau', 'Kuala Lumpur', MalaysianState::KualaLumpur, '58200', 'Laptop sleeve', 700, 40, 30, 4),
+                'order' => $this->parcel('Sarah Abdullah', '+60179012308', 'C-12-5, Pangsapuri Seri Mas', 'Jalan Awan Hijau', 'Kuala Lumpur', MalaysianState::KualaLumpur, '58200', 'Laptop sleeve', 700, 40, 30, 4, receiverEmail: 'sarah.abdullah@kotak.test'),
             ],
             [
                 'customer' => 'jason', 'branch' => 'KL-TCN', 'status' => OrderStatus::Delivered, 'days_ago' => 8, 'ordered_days_before' => 4,
@@ -519,7 +519,7 @@ class DemoSeeder extends Seeder
                 'customer' => 'jason', 'branch' => 'SA-S13', 'status' => OrderStatus::ReturnedToSender, 'days_ago' => 9, 'ordered_days_before' => 2,
                 'driver' => 'faizal', 'payment' => PaymentMethod::Card,
                 'failures' => [DeliveryFailureReason::RecipientUnavailable, DeliveryFailureReason::NoAccess, DeliveryFailureReason::RecipientUnavailable],
-                'order' => $this->parcel('Brian Teo', '+60131234510', 'Lot 7, Jalan Lintas', 'Luyang', 'Kota Kinabalu', MalaysianState::Sabah, '88300', 'Hiking boots', 2300, 40, 30, 15),
+                'order' => $this->parcel('Brian Teo', '+60131234510', 'Lot 7, Jalan Lintas', 'Luyang', 'Kota Kinabalu', MalaysianState::Sabah, '88300', 'Hiking boots', 2300, 40, 30, 15, receiverEmail: 'brian.teo@kotak.test'),
             ],
             [
                 'customer' => 'jason', 'branch' => 'SA-S13', 'status' => OrderStatus::PickedUp, 'days_ago' => 1,
@@ -591,7 +591,8 @@ class DemoSeeder extends Seeder
     }
 
     /**
-     * Build the customer-entered part of an order.
+     * Build the customer-entered part of an order. Receivers' emails are
+     * reserved .test addresses, which are never sent to.
      *
      * @return array<string, mixed>
      */
@@ -608,10 +609,12 @@ class DemoSeeder extends Seeder
         int $lengthCm,
         int $widthCm,
         int $heightCm,
+        ?string $receiverEmail = null,
     ): array {
         return [
             'receiver_name' => $receiverName,
             'receiver_phone' => $receiverPhone,
+            'receiver_email' => $receiverEmail,
             'address_line1' => $addressLine1,
             'address_line2' => $addressLine2,
             'city' => $city,

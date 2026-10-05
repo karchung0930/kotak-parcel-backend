@@ -164,8 +164,13 @@ img {
     width: 570px;
 }
 
+/* A link in a sentence ("stop these emails") wraps between its words like
+   the text around it, and only breaks inside a word that is longer than
+   the line. The address under the button keeps breaking anywhere
+   (.break-all). */
 .inner-body a {
-    word-break: break-all;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
 }
 
 /* Subcopy */

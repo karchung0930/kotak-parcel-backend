@@ -25,7 +25,7 @@ class ViewOrderTest extends TestCase
 
     public function test_customers_see_their_new_order_and_can_cancel_it()
     {
-        $order = Order::factory()->create();
+        $order = Order::factory()->create(['receiver_email' => 'daniel@example.com']);
 
         $this->actingAs($order->customer)
             ->get(route('orders.show', $order))
@@ -38,6 +38,7 @@ class ViewOrderTest extends TestCase
                 ->where('order.status_description', 'Your order is ready to be dropped off at your chosen Kotak branch.')
                 ->where('order.receiver_name', $order->receiver_name)
                 ->where('order.receiver_phone', $order->receiver_phone)
+                ->where('order.receiver_email', 'daniel@example.com')
                 ->where('order.branch.id', $order->branch_id)
                 ->where('order.payment', null)
                 ->where('order.latest_attempt', null)

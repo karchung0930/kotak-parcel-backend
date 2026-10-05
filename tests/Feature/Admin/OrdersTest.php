@@ -172,7 +172,7 @@ class OrdersTest extends TestCase
 
     public function test_the_order_page_shows_everything_about_the_order()
     {
-        $order = Order::factory()->deliveryFailed()->create();
+        $order = Order::factory()->deliveryFailed()->create(['receiver_email' => 'daniel@example.com']);
 
         $this->actingAs($this->admin)
             ->get(route('admin.orders.show', $order))
@@ -182,6 +182,7 @@ class OrdersTest extends TestCase
                 ->where('order.id', $order->id)
                 ->where('order.status.value', 'delivery_failed')
                 ->where('order.customer.id', $order->customer_id)
+                ->where('order.receiver_email', 'daniel@example.com')
                 ->where('order.driver.id', $order->driver_id)
                 ->has('order.branch')
                 ->has('order.payment.received_by')

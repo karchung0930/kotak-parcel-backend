@@ -121,6 +121,7 @@ class TrackingPageTest extends TestCase
             'tracking_number' => 'KT7Q4M92XD',
             'receiver_name' => 'Daniel Lim',
             'receiver_phone' => '+60127788990',
+            'receiver_email' => 'daniel.lim@example.com',
             'address_line1' => 'No. 12, Jalan Datuk Sulaiman 1',
             'address_line2' => 'Taman Tun Dr Ismail',
             'item_name' => 'Ceramic dinner set',
@@ -137,7 +138,7 @@ class TrackingPageTest extends TestCase
         $json = (string) json_encode($props, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
         foreach ([
-            'Aisyah Rahman', 'aisyah@kotak.test', '+60123456789', 'Daniel Lim', '+60127788990',
+            'Aisyah Rahman', 'aisyah@kotak.test', '+60123456789', 'Daniel Lim', '+60127788990', 'daniel.lim@example.com',
             'Jalan Datuk Sulaiman', 'Taman Tun Dr Ismail', 'Ceramic dinner set', 'Mei Ling', 'pod/1/photo.png',
             $driver->name, (string) $driver->vehicle_plate,
         ] as $secret) {

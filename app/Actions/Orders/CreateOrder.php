@@ -30,8 +30,9 @@ class CreateOrder
      * from the current limit.
      *
      * @param  array<string, mixed>  $data  validated input: branch_id, receiver_name, receiver_phone,
-     *                                      address_line1, address_line2, city, state, postcode, item_name,
-     *                                      declared_weight_g, length_cm, width_cm, height_cm
+     *                                      receiver_email (optional), address_line1, address_line2, city,
+     *                                      state, postcode, item_name, declared_weight_g, length_cm,
+     *                                      width_cm, height_cm
      *
      * @throws ValidationException
      */

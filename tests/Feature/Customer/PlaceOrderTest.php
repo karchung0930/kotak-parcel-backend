@@ -180,6 +180,18 @@ class PlaceOrderTest extends TestCase
             'unallocated receiver phone' => [['receiver_phone' => '010-123 4567'], 'receiver_phone'],
             'missing receiver phone' => [['receiver_phone' => ''], 'receiver_phone'],
             'missing receiver name' => [['receiver_name' => ''], 'receiver_name'],
+            'receiver email without a domain' => [['receiver_email' => 'daniel@'], 'receiver_email'],
+            'receiver email with a space' => [['receiver_email' => 'daniel lim@example.com'], 'receiver_email'],
+            'two receiver emails' => [['receiver_email' => 'daniel@example.com, mei@example.com'], 'receiver_email'],
+            'receiver email over 255 characters' => [['receiver_email' => str_repeat('d', 244).'@example.com'], 'receiver_email'],
+            'receiver email as a list' => [['receiver_email' => ['daniel@example.com']], 'receiver_email'],
+            // Mail servers refuse or bounce these, and nobody confirms the receiver's address.
+            'receiver email with no top-level domain' => [['receiver_email' => 'daniel@gmail'], 'receiver_email'],
+            'receiver email at localhost' => [['receiver_email' => 'daniel@localhost'], 'receiver_email'],
+            'receiver email with a comment' => [['receiver_email' => 'daniel(comment)@example.com'], 'receiver_email'],
+            'receiver email with a quoted name' => [['receiver_email' => '"daniel lim"@example.com'], 'receiver_email'],
+            'receiver email at an IP address' => [['receiver_email' => 'daniel@[127.0.0.1]'], 'receiver_email'],
+            'receiver email with accents' => [['receiver_email' => 'dánïel@example.com'], 'receiver_email'],
             'missing address' => [['address_line1' => ''], 'address_line1'],
             'missing city' => [['city' => ''], 'city'],
             'city over two lines' => [['city' => "Klang\n\n# Urgent"], 'city'],
@@ -228,6 +240,30 @@ class PlaceOrderTest extends TestCase
                 'length_cm' => 'Each side of the parcel can be up to 150 cm.',
                 'receiver_phone' => 'Enter a valid Malaysian mobile or landline number.',
             ]);
+    }
+
+    public function test_the_receiver_email_is_optional()
+    {
+        $this->actingAs($this->customer)->post(route('orders.store'), $this->input())->assertSessionHasNoErrors();
+        $this->actingAs($this->customer)->post(route('orders.store'), $this->input(['receiver_email' => '']))->assertSessionHasNoErrors();
+        $this->actingAs($this->customer)->post(route('orders.store'), $this->input(['receiver_email' => ' daniel.lim@example.com ']))->assertSessionHasNoErrors();
+        $this->actingAs($this->customer)->post(route('orders.store'), $this->input(['receiver_email' => "daniel.o'neil+parcels@mail.example.com.my"]))->assertSessionHasNoErrors();
+
+        $this->assertSame(
+            [null, null, 'daniel.lim@example.com', "daniel.o'neil+parcels@mail.example.com.my"],
+            Order::query()->orderBy('id')->pluck('receiver_email')->all(),
+        );
+    }
+
+    public function test_an_invalid_receiver_email_is_explained()
+    {
+        $this->actingAs($this->customer)
+            ->post(route('orders.store'), $this->input(['receiver_email' => 'daniel@']))
+            ->assertSessionHasErrors(['receiver_email' => 'Enter a valid email address, or leave it empty.']);
+
+        $this->actingAs($this->customer)
+            ->post(route('orders.store'), $this->input(['receiver_email' => str_repeat('d', 244).'@example.com']))
+            ->assertSessionHasErrors(['receiver_email' => "The receiver's email field must not be greater than 255 characters."]);
     }
 
     public function test_a_city_with_markup_is_explained()

@@ -65,6 +65,11 @@ dinner set from Aisyah Rahman to Daniel Lim in Taman Tun Dr Ismail, out for
 delivery today. On your own machine, `php artisan db:seed --class=DemoSeeder`
 loads the same data (see [Running it locally](#running-it-locally)).
 
+Seven orders, the sample parcel among them, have a receiver email (at
+`@kotak.test`, so nothing is actually sent). It shows on the order page for
+the customer, staff and admins; assigning `KT-00000004` in Dispatch would
+email Rosli Ismail his delivery day.
+
 It also has three versions of the rates (admin **Rates**): the Standard
 rates that older orders were priced with, the zone rates in effect since a
 few days ago (Peninsular Malaysia, Sabah & Labuan, Sarawak), and higher East
@@ -95,7 +100,8 @@ online parcel delivery system with four roles.
 3. An **admin** assigns a truck driver and a delivery date.
 4. The **driver** picks the parcel up and delivers it.
 5. The customer can track the parcel at any time and gets an email when its
-   status changes.
+   status changes. The receiver hears about the delivery too, when the
+   customer gives their email address.
 
 The scenario was drawn as six microservices. Here they are modules of one
 Laravel application, with the same boundaries (see
@@ -103,20 +109,20 @@ Laravel application, with the same boundaries (see
 
 ### How each requirement maps to the app
 
-| Requirement                                                                                                      | Where                                                                                                                                                                                                                                              |
-| ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Register and log in; each role only reaches its own screens                                                      | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                         |
-| Create an order: delivery address, item name, weight and dimensions                                              | **Send a parcel** (`orders/Create`) → `CreateOrder`                                                                                                                                                                                                |
-| Show an estimated price, a tracking number and the nearest branch                                                | Live estimate with the current rate card, from the chosen branch to the receiver's state (`RateCards`, `PriceCalculator`, mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance        |
-| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                                                                                     |
-| Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                 |
-| Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline |
-| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_. The driver is emailed the job, a driver it is taken from is told, and every driver with jobs gets a run sheet at 7:00 (`drivers:send-run-sheets`)                                   |
-| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                           |
-| Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                  |
-| Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                     |
-| Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires                                                                                        |
-| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards, imported from and downloaded as spreadsheets in `admin/rates/imports`), `admin/Settings` (with drop-off timing)           |
+| Requirement                                                                                                      | Where                                                                                                                                                                                                                                                              |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Register and log in; each role only reaches its own screens                                                      | `auth/*` and `settings/*` pages (Fortify); `role:` middleware on each route file; Policies                                                                                                                                                                         |
+| Create an order: delivery address, item name, weight and dimensions                                              | **Send a parcel** (`orders/Create`), with an optional receiver email → `CreateOrder`                                                                                                                                                                               |
+| Show an estimated price, a tracking number and the nearest branch                                                | Live estimate with the current rate card, from the chosen branch to the receiver's state (`RateCards`, `PriceCalculator`, mirrored in `lib/pricing.ts`); `KT-` number from `TrackingNumber`; **Use my location** sorts branches by distance                        |
+| Drop off at a branch; staff weigh it and set the final price                                                     | **Drop-off counter** (`staff/Counter`, `staff/OrderShow`) → `RecordDropOff` → _Dropped Off_, priced with the rate card in effect at drop-off, from that branch                                                                                                     |
+| Pay at the counter by cash or card, with a receipt                                                               | Take payment → `RecordPayment` → _Paid_; printable 80 mm receipt (`staff/Receipt`)                                                                                                                                                                                 |
+| Cancel an order, only before it is paid                                                                          | Customer and counter cancel buttons → `CancelOrder`. Orders never dropped off are cancelled after 7 days (an admin setting) by `orders:expire-unclaimed`, after a reminder email from `orders:remind-unclaimed`; the order page shows the deadline                 |
+| Admin assigns a paid order to a driver and schedules the delivery day                                            | **Dispatch** (`admin/Dispatch`) → `AssignDriver` → _Assigned_. The driver is emailed the job, a driver it is taken from is told, and every driver with jobs gets a run sheet at 7:00 (`drivers:send-run-sheets`)                                                   |
+| Driver picks up and delivers, with proof of delivery                                                             | **My jobs** (`driver/Jobs`, `driver/JobShow`, phone first) → `MarkPickedUp` → _Picked Up_; `RecordDeliverySuccess` stores the recipient's name and a photo → _Delivered_                                                                                           |
+| Driver reports a failed delivery; admin reschedules it                                                           | `RecordDeliveryFailure` → _Delivery Failed_; Dispatch reschedules (→ _Assigned_). After 3 failed attempts (an admin setting) the only way out is `ReturnToSender` → _Returned to Sender_. Admins can also return a parcel earlier                                  |
+| Track a parcel by its tracking number                                                                            | **Track** (`track/Show`): status, progress conveyor and history only, no personal details. Customers also see their own orders (`orders/Index`, `orders/Show`)                                                                                                     |
+| Notify the customer when the status changes                                                                      | `OrderStatusChanged` event → queued `SendOrderStatusNotification` → `OrderStatusUpdated` email. A `DropOffReminder` email before an unclaimed order expires. The receiver gets `ReceiverStatusUpdated` from dispatch to delivery, if the customer gave their email |
+| Beyond the brief: pricing and branch pages, admin order search, user and branch management, rates, site settings | `pricing/Index`, `branches/Index`, `admin/orders`, `admin/users`, `admin/branches`, `admin/rates` (versioned rate cards, imported from and downloaded as spreadsheets in `admin/rates/imports`), `admin/Settings` (with drop-off timing)                           |
 
 **Pricing** comes from the rate card in effect (see
 [Rate cards](#rate-cards)). The chargeable weight is the greater of:
@@ -378,6 +384,52 @@ cells, go with it.
 - It only writes to customers with a verified email address. It skips driver
   swaps that don't change the delivery day.
 
+**Receiver emails.** The customer may give the receiver's email address on
+**Send a parcel** (optional). `SendReceiverStatusNotification` hears the same
+`OrderStatusChanged` event and queues `ReceiverStatusUpdated` as an on-demand
+notification (`Notification::route('mail', ...)`, as the receiver has no
+account), retried like the others:
+
+| The parcel reaches | The receiver reads                                                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Assigned           | the delivery day; the new day when it changed, or "we will try again" on a day after a failed attempt                                   |
+| Picked Up          | "out for delivery today"                                                                                                                |
+| Delivered          | "has been delivered", and who took it when the driver recorded a name                                                                   |
+| Delivery Failed    | the reason (none for "Other reason"), then that we will write when there is a new day or the parcel goes back, or that it goes back now |
+| Returned to Sender | returned to the sender, and to get in touch with them if they still need it                                                             |
+
+- Nothing goes out before a delivery day is set (Created, Dropped Off, Paid,
+  Cancelled), so an address is only written to once its parcel has been
+  dropped off, paid for and dispatched. Same-day driver swaps are skipped, as
+  for the customer: `OrderStatusChanged` works that out when it is created,
+  straight after the save, so a queued copy of the event knows it too.
+- An email waits in the queue, so when its turn comes it checks that it is
+  still news (`ReceiverStatusUpdated::shouldSend()`). A delivery day is
+  dropped once the delivery moved or the parcel was picked up, and when a
+  newer delivery-day email was queued (the id of the latest one is kept in
+  the cache), so moving a day and moving it back sends only the last.
+  "Out for delivery today" is dropped once the attempt is over. Outcomes
+  (delivered, failed, returned) always go out.
+- When the receiver's address is the customer's own verified one, only the
+  customer's email goes out.
+- The email gives the tracking number, the sender's name and a link to public
+  tracking, nothing more: no sender phone number or address, not the
+  customer's email, and not even the receiver's name ("Hello,"), in case the
+  customer mistyped the address. The sender's name is the customer's own
+  text, so it stays out of the subject and is printed as a short plain name
+  (`MailText::name()`, below).
+- Each email ends with a link to stop them: a signed link to a page with
+  one button (`receiver-emails.show`), which removes the address from the
+  order (`StopReceiverEmails`), so emails already queued are dropped too.
+  The same link is in the `List-Unsubscribe` header with one-click
+  unsubscribe (RFC 8058), so a mail app's own Unsubscribe button works
+  without opening the page.
+- `RECEIVER_EMAILS=false` (`kotak.receiver_emails`) stops every receiver
+  email, queued ones included.
+- The address shows on the customer's order page and on the staff and admin
+  order pages (`OrderResource`), never on public tracking, on the receipt or
+  to drivers.
+
 **Driver emails.** `AssignDriver` also dispatches `DeliveryAssigned` after
 commit. The event carries the run the delivery was on before (its driver and
 day), read under the row lock: by the time anyone hears the event, the order
@@ -518,7 +570,8 @@ Actions write only values they computed themselves, never raw request input.
 **Public tracking**
 
 - The tracking page shows the status, the destination city and postcode, the
-  branch and the history. It never shows names, phone numbers or addresses.
+  branch and the history. It never shows names, phone numbers, email
+  addresses or street addresses.
 - Lookups are throttled to 30 a minute per IP address.
 - Tracking numbers are 8 random Crockford base32 characters (32⁸ ≈ 1.1
   trillion), so they are hard to guess.
@@ -530,9 +583,22 @@ Actions write only values they computed themselves, never raw request input.
   tracking number, the day, the pickup branch and the delivery area (city
   and postcode). Receivers' names, addresses and phone numbers are on the job
   page.
-- Status, reminder and driver emails only go to verified addresses, and never
-  to the reserved `.test` addresses of the demo accounts. Driver emails check
-  this again when they are sent.
+- Receiver emails carry the tracking number, the sender's name and a link to
+  public tracking, never the sender's phone number, the customer's email or
+  the receiver's own name.
+- The receiver's address is not verified, as they have no account. It must
+  be a plain address a mail server can deliver to (`email:strict,filter`: no
+  comments, quoted names, IP addresses, dotless domains or non-ASCII), and
+  nothing is sent to it before the parcel has been dropped off, paid for and
+  dispatched. So a typed address alone sends nothing: it takes staff to take
+  the parcel and an admin to dispatch it. On a public demo whose staff and
+  admin accounts are listed for anyone (above), anyone can take those steps,
+  so keep `MAIL_TO_ADDRESS` set there, or set `RECEIVER_EMAILS=false`, while
+  the demo accounts exist. Every receiver email carries a one-click link that
+  stops them.
+- Status, reminder and driver emails only go to verified addresses, and no
+  email goes to the reserved `.test` addresses of the demo accounts. Driver
+  emails check this again when they are sent.
 - Text that users type is printed in emails as plain text: no Markdown or
   HTML in it becomes a link, image, heading or table cell. A city with a
   line break or `< > [ ] |` is refused when the order is placed, and
@@ -542,10 +608,20 @@ Actions write only values they computed themselves, never raw request input.
   escapes `[` as well as HTML, but that only covers mail views compiled
   while an email renders, and `php artisan optimize` compiles them ahead,
   so the first two do not rely on it.
+- Mail apps also turn a web address in plain text into a link, so the
+  sender's name, which receivers read, gets more care. An account name with
+  a line break, `< > [ ] |`, text-direction controls or a web address is
+  refused (`PersonName`, at most 100 characters), and the receiver's emails
+  print it through `MailText::name()`, which also covers older names: web
+  addresses are left out, a dot before a letter gets a space ("pay.example"
+  is no longer a domain), invisible characters go, and the name is cut to 60
+  characters. It never appears in the subject.
 
 **Payments**
 
 - The amount must equal the final price set at weighing.
+- The receipt page gets only what the receipt prints about the parcel, not
+  the sender's or receiver's contact details.
 - The database allows one payment per order and unique receipt numbers.
 - Card payments keep only the terminal's approval code (4 to 12 letters and
   digits), never a card number.
@@ -661,8 +737,10 @@ update script are in [`deploy/`](deploy).
   spreadsheets from the same disk, so they need shared storage too.
 - **Mail**: set a real mailer, for example Amazon SES through
   `MAIL_MAILER=smtp` (no extra package), and `MAIL_FROM_ADDRESS` on a domain
-  with SPF and DKIM set up. Status, reminder and driver emails only go out
-  while the queue worker runs.
+  with SPF and DKIM set up. Status, reminder, receiver and driver emails only
+  go out while the queue worker runs. While the public demo accounts exist,
+  keep `MAIL_TO_ADDRESS` set or `RECEIVER_EMAILS=false` (see
+  [Security](#security)).
 
 ## What I'd add next
 

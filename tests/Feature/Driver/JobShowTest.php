@@ -55,7 +55,7 @@ class JobShowTest extends TestCase
     public function test_the_driver_never_receives_the_senders_details_or_prices()
     {
         $driver = User::factory()->driver()->create();
-        $order = Order::factory()->assigned($driver)->create();
+        $order = Order::factory()->assigned($driver)->create(['receiver_email' => 'daniel@example.com']);
 
         $this->actingAs($driver)
             ->get(route('driver.jobs.show', $order))
@@ -66,7 +66,9 @@ class JobShowTest extends TestCase
                 ->missing('order.sender_phone')
                 ->missing('order.estimated_price_sen')
                 ->missing('order.final_price_sen')
-                ->missing('order.payment'),
+                ->missing('order.payment')
+                // Only for the receiver's delivery updates.
+                ->missing('order.receiver_email'),
             );
     }
 

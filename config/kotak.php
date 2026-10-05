@@ -52,6 +52,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Receiver Emails
+    |--------------------------------------------------------------------------
+    |
+    | A customer may give the receiver's email address for delivery updates.
+    | Nobody confirms that address, so set RECEIVER_EMAILS=false to stop every
+    | receiver email, for example on a public demo whose staff and admin
+    | accounts anyone can sign in to (see the README's security notes).
+    |
+    */
+
+    'receiver_emails' => (bool) env('RECEIVER_EMAILS', true),
+
+    /*
+    |--------------------------------------------------------------------------
     | Reverse Proxy
     |--------------------------------------------------------------------------
     |

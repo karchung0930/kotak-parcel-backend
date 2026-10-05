@@ -114,7 +114,7 @@ class CounterTest extends TestCase
 
     public function test_the_parcel_page_has_what_the_counter_needs()
     {
-        $order = Order::factory()->paid()->create();
+        $order = Order::factory()->paid()->create(['receiver_email' => 'daniel@example.com']);
 
         $this->actingAs($this->staff)
             ->get(route('staff.orders.show', $order))
@@ -124,6 +124,7 @@ class CounterTest extends TestCase
                 ->where('order.id', $order->id)
                 ->where('order.status.value', 'paid')
                 ->where('order.customer.id', $order->customer_id)
+                ->where('order.receiver_email', 'daniel@example.com')
                 ->where('order.payment.id', $order->payment?->id)
                 ->has('order.payment.received_by')
                 ->has('order.status_events', 3)

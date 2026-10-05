@@ -126,6 +126,37 @@ class ProfileUpdateTest extends TestCase
         $this->assertNotSame('+6591234567', $user->refresh()->phone);
     }
 
+    public function test_the_name_must_be_plain_text()
+    {
+        $user = User::factory()->create(['name' => 'Aisyah Rahman']);
+
+        // Receivers read a customer's name in their emails, as the sender.
+        $cases = [
+            "Aisyah\n\n# Urgent" => 'Remove line breaks and the characters <'."\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the name.",
+            'Aisyah [Sign in](https://evil.example)' => 'Remove line breaks and the characters <'."\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the name.",
+            'Aisyah <b>Rahman</b>' => 'Remove line breaks and the characters <'."\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the name.",
+            "Aisyah \u{202E}namhaR" => 'Remove line breaks and the characters <'."\u{00A0}>\u{00A0}[\u{00A0}]\u{00A0}| from the name.",
+            'Kotak Customs: pay at https://kotak-duty.example' => 'The name cannot contain a web address.',
+            'Kotak Customs: pay at WWW.kotak-duty.example' => 'The name cannot contain a web address.',
+            str_repeat('a', 101) => 'The name field must not be greater than 100 characters.',
+        ];
+
+        foreach ($cases as $name => $message) {
+            $this->actingAs($user)
+                ->patch(route('profile.update'), ['name' => $name, 'email' => $user->email, 'phone' => $user->phone])
+                ->assertSessionHasErrors(['name' => $message]);
+        }
+
+        $this->assertSame('Aisyah Rahman', $user->refresh()->name);
+
+        // Apostrophes, dots, hyphens, slashes and non-Latin letters are fine.
+        $this->actingAs($user)
+            ->patch(route('profile.update'), ['name' => "Siti Nur'aini bt. Abdullah-Lim a/p Rajan 林美玲", 'email' => $user->email, 'phone' => $user->phone])
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame("Siti Nur'aini bt. Abdullah-Lim a/p Rajan 林美玲", $user->refresh()->name);
+    }
+
     public function test_the_e164_number_the_form_sends_is_stored()
     {
         $user = User::factory()->create();

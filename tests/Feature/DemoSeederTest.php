@@ -45,6 +45,12 @@ class DemoSeederTest extends TestCase
         $this->assertSame(6000, $sample->chargeable_weight_g);
         $this->assertSame(1800, $sample->final_price_sen);
 
+        // Some receivers have an email, all at reserved .test addresses that are never sent to.
+        $this->assertSame('daniel.lim@kotak.test', $sample->receiver_email);
+        $receiverEmails = Order::query()->whereNotNull('receiver_email')->pluck('receiver_email');
+        $this->assertCount(7, $receiverEmails);
+        $this->assertTrue($receiverEmails->every(fn (string $email) => str_ends_with($email, '@kotak.test')));
+
         $this->assertSame(OrderStatus::Delivered, Order::byTrackingNumber('KT-00000003')->firstOrFail()->status);
         $this->assertSame(OrderStatus::Cancelled, Order::byTrackingNumber('KT-00000021')->firstOrFail()->status);
         $this->assertSame(['KT00000024'], Order::expiredUnclaimed()->pluck('tracking_number')->all());

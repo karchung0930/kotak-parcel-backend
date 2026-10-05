@@ -45,6 +45,22 @@ class RegistrationTest extends TestCase
         $this->assertTrue($user->is_active);
     }
 
+    public function test_a_name_with_a_web_address_or_markup_is_refused()
+    {
+        foreach (['Kotak Customs: pay at https://kotak-duty.example', 'Aisyah [Sign in](https://evil.example)'] as $name) {
+            $this->post(route('register.store'), [
+                'name' => $name,
+                'email' => 'test@example.com',
+                'phone' => '012-345 6789',
+                'password' => 'password',
+                'password_confirmation' => 'password',
+            ])->assertSessionHasErrors('name');
+        }
+
+        $this->assertGuest();
+        $this->assertSame(0, User::query()->count());
+    }
+
     public function test_the_e164_number_the_form_sends_is_stored_as_it_is()
     {
         $this->post(route('register.store'), [

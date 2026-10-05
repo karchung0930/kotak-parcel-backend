@@ -107,7 +107,9 @@ class AppServiceProvider extends ServiceProvider
      *
      * Those domains cannot exist, so a real mailer such as SES would record a bounce
      * for each one and the account's reputation would suffer. Real addresses, like
-     * someone who signs up on the demo site, still get their mail.
+     * someone who signs up on the demo site, still get their mail, and so would a
+     * real receiver address typed into an order: the public demo keeps
+     * MAIL_TO_ADDRESS set, or RECEIVER_EMAILS=false (see the README's security notes).
      */
     protected function skipReservedTestAddresses(): void
     {

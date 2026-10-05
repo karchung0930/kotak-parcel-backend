@@ -4,6 +4,7 @@ namespace App\Concerns;
 
 use App\Models\User;
 use App\Rules\MalaysianPhone;
+use App\Rules\PersonName;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Validation\Rule;
 
@@ -24,13 +25,15 @@ trait ProfileValidationRules
     }
 
     /**
-     * Get the validation rules used to validate user names.
+     * Get the validation rules used to validate user names. A customer's
+     * name is also the sender's name on their parcels, which receivers read
+     * in their emails: as long as a receiver's name at most, and plain.
      *
      * @return array<int, ValidationRule|array<mixed>|string>
      */
     protected function nameRules(): array
     {
-        return ['required', 'string', 'max:255'];
+        return ['required', 'string', 'max:100', new PersonName];
     }
 
     /**

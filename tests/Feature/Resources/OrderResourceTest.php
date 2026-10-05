@@ -3,9 +3,11 @@
 namespace Tests\Feature\Resources;
 
 use App\Http\Resources\BranchResource;
+use App\Http\Resources\DriverJobResource;
 use App\Http\Resources\OrderResource;
 use App\Http\Resources\OrderSummaryResource;
 use App\Http\Resources\PaymentResource;
+use App\Http\Resources\TrackingResource;
 use App\Http\Resources\UserResource;
 use App\Models\Branch;
 use App\Models\Order;
@@ -46,6 +48,20 @@ class OrderResourceTest extends TestCase
         $this->assertIsFloat($loaded['branch']['latitude']);
     }
 
+    public function test_the_receivers_email_is_only_in_the_full_order()
+    {
+        $order = Order::factory()->assigned()->create(['receiver_email' => 'daniel@example.com'])->fresh();
+        $this->assertNotNull($order);
+
+        // For the customer's own order page and the staff and admin views.
+        $this->assertSame('daniel@example.com', (new OrderResource($order))->resolve()['receiver_email']);
+
+        // Not in lists, nor for drivers or public tracking.
+        $this->assertArrayNotHasKey('receiver_email', (new OrderSummaryResource($order))->resolve());
+        $this->assertArrayNotHasKey('receiver_email', (new DriverJobResource($order))->resolve());
+        $this->assertStringNotContainsString('daniel@example.com', (string) json_encode((new TrackingResource($order))->resolve()));
+    }
+
     public function test_dates_are_iso_8601_utc_and_scheduled_dates_are_plain_dates()
     {
         $this->travelTo('2026-09-29 02:15:00');
@@ -59,13 +75,19 @@ class OrderResourceTest extends TestCase
 
     public function test_the_payment_receipt_carries_its_order()
     {
-        $order = Order::factory()->paid()->create();
+        $order = Order::factory()->paid()->create(['receiver_email' => 'daniel@example.com']);
 
         $data = (new PaymentResource($order->payment()->with(['order', 'branch', 'receivedBy'])->firstOrFail()))->response()->getData(true);
 
         $this->assertSame($order->formatted_tracking_number, $data['order']['tracking_number']);
-        $this->assertSame($order->sender_name, $data['order']['sender_name']);
+        $this->assertSame($order->receiver_name, $data['order']['receiver_name']);
         $this->assertArrayHasKey('name', $data['received_by']);
+
+        // Only what the receipt prints: no one's phone number, email or street address.
+        $this->assertSame([
+            'id', 'tracking_number', 'item_name', 'receiver_name', 'city', 'postcode',
+            'measured_weight_g', 'length_cm', 'width_cm', 'height_cm', 'chargeable_weight_g',
+        ], array_keys($data['order']));
     }
 
     public function test_user_accounts_never_expose_secrets()

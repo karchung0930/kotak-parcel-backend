@@ -20,6 +20,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 /**
@@ -35,6 +36,7 @@ use Illuminate\Support\Str;
  * @property string $sender_phone
  * @property string $receiver_name
  * @property string $receiver_phone
+ * @property string|null $receiver_email
  * @property string $address_line1
  * @property string|null $address_line2
  * @property string $city
@@ -65,7 +67,7 @@ use Illuminate\Support\Str;
  */
 #[Fillable([
     'branch_id',
-    'receiver_name', 'receiver_phone',
+    'receiver_name', 'receiver_phone', 'receiver_email',
     'address_line1', 'address_line2', 'city', 'state', 'postcode',
     'item_name', 'declared_weight_g', 'length_cm', 'width_cm', 'height_cm',
 ])]
@@ -248,6 +250,17 @@ class Order extends Model
     public function deliveryArea(): string
     {
         return Str::replaceLast(' ', "\u{00A0}", MailText::plain("{$this->city} {$this->postcode}"));
+    }
+
+    /**
+     * Get the link in each receiver email to the page that stops them.
+     *
+     * The signature covers the path only, so the link works on whichever
+     * host name serves the site.
+     */
+    public function stopReceiverEmailsUrl(): string
+    {
+        return url(URL::signedRoute('receiver-emails.show', $this, absolute: false));
     }
 
     /**

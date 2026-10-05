@@ -201,7 +201,7 @@ class PaymentTest extends TestCase
 
     public function test_the_receipt_shows_the_payment_and_its_parcel()
     {
-        $order = Order::factory()->paid()->create();
+        $order = Order::factory()->paid()->create(['receiver_email' => 'daniel@example.com']);
         $payment = $order->payment()->sole();
 
         $this->actingAs($this->staff)
@@ -213,6 +213,12 @@ class PaymentTest extends TestCase
                 ->where('payment.amount_sen', $order->final_price_sen)
                 ->where('payment.method.value', 'cash')
                 ->where('payment.order.tracking_number', $order->formatted_tracking_number)
+                ->where('payment.order.receiver_name', $order->receiver_name)
+                // The receipt prints none of the contact details.
+                ->missing('payment.order.receiver_email')
+                ->missing('payment.order.receiver_phone')
+                ->missing('payment.order.sender_phone')
+                ->missing('payment.order.address_line1')
                 ->where('payment.branch.id', $payment->branch_id)
                 ->where('payment.received_by.id', $payment->received_by));
     }

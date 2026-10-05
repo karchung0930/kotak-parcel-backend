@@ -49,8 +49,8 @@ composer run dev                         # http://localhost:8000 and a queue lis
   (`Get-Content storage/logs/laravel.log -Wait` in PowerShell). Where PHP
   has the `pcntl` extension, usually on macOS and Linux, `composer run dev`
   shows the log too, through Pail. Mail addressed only to `.test`
-  addresses, which includes every demo account, is skipped because those
-  domains cannot exist. To read the demo emails, set
+  addresses, which includes every demo account and receiver, is skipped
+  because those domains cannot exist. To read the demo emails, set
   `MAIL_TO_ADDRESS=you@example.com` in `.env`: every email then goes to that
   address and appears in the log. Or register your own account.
 - **Scheduler.** It is only needed for the 7:00 driver run sheets, the 9:00
@@ -162,8 +162,10 @@ The PHP tests cover:
 - payments
 - proof-of-delivery privacy
 - the queued notifications, including which driver gets which email when a
-  delivery is assigned, moved or handed over, the morning run sheets, and
-  that no driver email carries the receiver's details
+  delivery is assigned, moved or handed over, the morning run sheets, which
+  steps reach the receiver and which queued ones are dropped as old news,
+  the receiver's stop link, and that no driver or receiver email carries
+  details it should not
 - the site settings, the drop-off timing figures and the reminder job
 - rate limits and security headers
 - the indexes behind the busiest pages (MySQL's `EXPLAIN` on a month of

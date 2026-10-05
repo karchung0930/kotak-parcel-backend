@@ -240,8 +240,8 @@ cd $BACKEND
 sudo -u apache bash -c 'umask 0002 && php artisan db:seed --env=staging --force'
 ```
 
-Drop the ~115 emails the seeder queued (status updates and drivers' new
-jobs), so they are never sent:
+Drop the ~135 emails the seeder queued (status updates, receivers' delivery
+updates and drivers' new jobs), so they are never sent:
 
 ```sh
 cd $BACKEND
@@ -275,8 +275,8 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost/up
 
 ## 10. Queue worker and scheduler
 
-Install and start the worker (status, reminder and driver emails, and
-reading and checking rate imports) and the scheduler timer. The timer runs
+Install and start the worker (status, reminder, receiver and driver emails,
+and reading and checking rate imports) and the scheduler timer. The timer runs
 `php artisan schedule:run` every minute, which emails drivers their run sheets
 at 7:00, sends the drop-off reminders at 9:00, cancels unclaimed orders at
 midnight and deletes uploaded rate spreadsheets older than a week at 3:00,
@@ -380,6 +380,13 @@ addresses. For the demo that is enough: `MAIL_TO_ADDRESS` sends **every**
 email (sign-up verification, staff invitations, status updates) to your own
 inbox instead of the `@kotak.test` addresses.
 
+Keep `MAIL_TO_ADDRESS` set for as long as the demo accounts are listed in
+the README. Customers may give a receiver's email address, which nobody
+confirms, and the receiver is emailed once staff take the parcel and an
+admin dispatches it. With the staff and admin passwords public, anyone could
+do all three and have the site email any address. To keep real addresses
+but send no receiver emails at all, add `RECEIVER_EMAILS=false` to `.env`.
+
 Fill in your values and write them into `.env`:
 
 ```sh
@@ -405,8 +412,8 @@ cd $BACKEND
 php artisan tinker --execute="Illuminate\Support\Facades\Mail::raw('Kotak SES test', fn (\$m) => \$m->to('test@kotak.test')->subject('Kotak SES test'));"
 ```
 
-For real customers later: request SES production access and remove
-`MAIL_TO_ADDRESS`.
+For real customers later: remove or change the demo accounts' passwords
+first, then request SES production access and remove `MAIL_TO_ADDRESS`.
 
 ## After changing `.env`
 
@@ -449,6 +456,13 @@ moved and removed jobs go through the queue worker that is already running,
 and the existing scheduler timer sends the morning run sheets
 (`drivers:send-run-sheets`, 7:00), so again there is nothing new to install
 or start.
+
+The first update with receiver emails adds one optional column,
+`orders.receiver_email`, which `deploy.sh` migrates; orders placed before it
+have none, so their receivers get nothing. The receivers' delivery updates go
+through the queue worker that is already running, so there is nothing new to
+install or start either. Check that `MAIL_TO_ADDRESS` is still set while the
+demo accounts are public (step 13), or add `RECEIVER_EMAILS=false`.
 
 ## Logs
 

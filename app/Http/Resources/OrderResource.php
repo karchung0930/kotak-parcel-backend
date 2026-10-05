@@ -28,6 +28,8 @@ class OrderResource extends OrderSummaryResource
             'sender_name' => $this->sender_name,
             'sender_phone' => $this->sender_phone,
             'receiver_phone' => $this->receiver_phone,
+            // Where the receiver's delivery updates go: never on public tracking or for drivers.
+            'receiver_email' => $this->receiver_email,
             'address_line2' => $this->address_line2,
             'declared_weight_g' => $this->declared_weight_g,
             'length_cm' => $this->length_cm,

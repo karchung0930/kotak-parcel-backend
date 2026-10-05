@@ -8,7 +8,8 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
  * A delivery as its driver sees it: where to collect it, what it is and who
- * receives it. Never the sender's details, prices or payment.
+ * receives it. Never the sender's details, prices or payment, nor the
+ * receiver's email, which is only for their delivery updates.
  *
  * @mixin Order
  */

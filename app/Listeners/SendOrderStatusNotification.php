@@ -24,7 +24,7 @@ class SendOrderStatusNotification implements ShouldQueue
      */
     public function shouldQueue(OrderStatusChanged $event): bool
     {
-        return $event->order->customer->hasVerifiedEmail() && ! $this->isDriverSwap($event);
+        return $event->order->customer->hasVerifiedEmail() && ! $event->isDriverSwap();
     }
 
     /**
@@ -38,16 +38,5 @@ class SendOrderStatusNotification implements ShouldQueue
             $event->to,
             rescheduled: $event->from === $event->to,
         ));
-    }
-
-    /**
-     * Determine if a delivery was only handed to another driver on the same
-     * day, which changes nothing for the customer.
-     *
-     * Checked when the event fires, while the order still knows what its last save changed.
-     */
-    private function isDriverSwap(OrderStatusChanged $event): bool
-    {
-        return $event->from === $event->to && ! $event->order->wasChanged('scheduled_for');
     }
 }
